@@ -13,6 +13,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # ---------------------------------------------------------------------------
 option(CITSY_BUILD_TESTS            "Build unit tests"                 ON)
 option(CITSY_BUILD_EXAMPLES         "Build example programs"           ON)
+option(CITSY_BUILD_WEB              "Build the Emscripten browser player" OFF)
 
 # ---------------------------------------------------------------------------
 # Core library: citsy
@@ -42,6 +43,11 @@ target_compile_options(citsy PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang>:-Wall -Wextra -Wpedantic>
     $<$<CXX_COMPILER_ID:MSVC>:/W4>
 )
+
+# Wasm exceptions are required so the web player can catch ParseError.
+if(EMSCRIPTEN)
+    target_compile_options(citsy PRIVATE -fexceptions)
+endif()
 
 # citsy must have ZERO link deps on platform/media libraries.
 # Add only header-only or pure-logic dependencies here.
@@ -111,4 +117,25 @@ if(CITSY_BUILD_EXAMPLES)
 endif()
 
 # Display backends (32blit, custom hosts, …) live in separate repositories.
-# They link this library; they are not built here.
+# The browser player is the exception: it is an optional Emscripten target
+# so the Chili creator can run games without the JavaScript Bitsy engine.
+
+if(CITSY_BUILD_WEB)
+    if(NOT EMSCRIPTEN)
+        message(FATAL_ERROR "CITSY_BUILD_WEB requires the Emscripten toolchain")
+    endif()
+
+    add_executable(citsy_web backends/web/web_player.cpp)
+    target_link_libraries(citsy_web PRIVATE citsy)
+    target_compile_options(citsy_web PRIVATE -fexceptions -O2)
+    set_target_properties(citsy_web PROPERTIES OUTPUT_NAME "citsy")
+    target_link_options(citsy_web PRIVATE
+        "-fexceptions"
+        "SHELL:-sMODULARIZE=1"
+        "SHELL:-sEXPORT_NAME=CitsyModule"
+        "SHELL:-sENVIRONMENT=web,node"
+        "SHELL:-sALLOW_MEMORY_GROWTH=1"
+        "SHELL:-sEXPORTED_RUNTIME_METHODS=['ccall','UTF8ToString','HEAPU8','HEAPF32']"
+        "SHELL:-sEXPORTED_FUNCTIONS=['_citsy_load','_citsy_unload','_citsy_set_button','_citsy_frame','_citsy_pixels','_citsy_sound','_citsy_last_error']"
+    )
+endif()
