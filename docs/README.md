@@ -19,6 +19,8 @@ Supplementary documentation for the citsy project. For a high-level overview, de
 |---|---|
 | [Bitsy overview](bitsy/index.md) | Index for format and engine reference docs |
 | [Data model](bitsy/data-model.md) | Entity types, properties, file syntax, and C++ struct mapping |
-| [Dialog scripting](bitsy/dialog.md) | Variables, lists, inventory, `{end}` / `{exit}` |
+| [Dialog scripting](bitsy/dialog.md) | Pages, lists, actions, inventory, `{end}` / `{exit}` |
+| [Gameplay](bitsy/gameplay.md) | Movement, items, exits, endings, and text settings |
+| [Sound](bitsy/sound.md) | Blips, tunes, and the two pulse channels |
 
 For agent-oriented conventions (boundaries, module placement, checklist), see [AGENTS.md](../AGENTS.md).

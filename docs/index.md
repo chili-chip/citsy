@@ -85,7 +85,9 @@ Then embed the engine by implementing `citsy::Host`. See [Getting started](getti
 | [Building](tools.md) | CMake options, compilers, backends |
 | [Testing](testing.md) | Catch2, fixtures, writing tests |
 | [Bitsy data model](bitsy/data-model.md) | `PAL`, `TIL`, `SPR`, `ROOM`, … |
-| [Dialog scripting](bitsy/dialog.md) | Variables, lists, `{end}` / `{exit}` |
+| [Dialog scripting](bitsy/dialog.md) | Pages, lists, actions, `{end}` / `{exit}` |
+| [Gameplay](bitsy/gameplay.md) | Movement, items, exits, endings |
+| [Sound](bitsy/sound.md) | Blips, tunes, pulse channels |
 | [Roadmap](roadmap.md) | Phases and compatibility |
 
 !!! note "Not affiliated"

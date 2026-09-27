@@ -2,7 +2,7 @@
 
 A Bitsy game is a plain-text `.bitsy` file: a sequence of typed **segments**, each defining one entity (palette, tile, room, …). citsy parses this file into an in-memory `Game` structure (`src/model/game.hpp`).
 
-This document describes every entity type, its properties, how segments map to file syntax, and how entities relate to each other.
+This document describes every entity type, its properties, how segments map to file syntax, and how entities relate to each other. How those entities behave in play is in [Gameplay](gameplay.md). Blips and tunes are summarized here and specified in [Sound](sound.md). Dialog source is specified in [Dialog scripting](dialog.md).
 
 ---
 
@@ -18,7 +18,9 @@ Game
 ├── rooms[id]      → Room
 ├── dialogues[id]  → Dialogue
 ├── variables[name]→ Variable
-└── endings[id]    → Ending
+├── endings[id]    → Ending
+├── tunes[id]      → Tune
+└── blips[id]      → Blip
 ```
 
 All entity collections are keyed by string id (or name for variables). There is no implicit ordering — rooms, tiles, and other segments can appear in any sequence in the file.
@@ -615,7 +617,8 @@ Quick lookup of top-level `.bitsy` segment keywords:
 | `FONT` | Custom font | — | Parsed (`.bitsyfont`) |
 | `DEFAULT_FONT` | Font name | — | `ascii_small` if omitted |
 | `TEXT_DIRECTION` | `LTR` / `RTL` | — | Right-to-left dialog layout |
-| `TUNE` | Music | string | Melody + harmony bars |
+| `TUNE` | Music | string | Melody + harmony bars. See [Sound](sound.md) |
+| `BLIP` | Sound effect | string | Pitches, envelope, pulse. See [Sound](sound.md) |
 | `EXT` | Exit (legacy top-level) | — | Skipped by citsy |
 
 Room-level sub-keys (`ITM`, `EXT`, `END`, `PAL`, `NAME`, `WAL`) appear inside a `ROOM` segment body, not as top-level segments.

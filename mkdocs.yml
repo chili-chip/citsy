@@ -75,6 +75,8 @@ nav:
       - bitsy/index.md
       - Data model: bitsy/data-model.md
       - Dialog scripting: bitsy/dialog.md
+      - Gameplay: bitsy/gameplay.md
+      - Sound: bitsy/sound.md
 
 markdown_extensions:
   - admonition
