@@ -14,7 +14,19 @@ Documentation for the Bitsy game format and how citsy represents it. These guide
 
     ---
 
-    Variables, lists, inventory, `{end}` / `{exit}`, and the script interpreter.
+    Pages, lists, room and sound actions, inventory, and `{end}` / `{exit}`.
+
+-   :material-gamepad-variant: **[Gameplay](gameplay.md)**
+
+    ---
+
+    Movement, sprites, items, exits, endings, locks, and text settings.
+
+-   :material-volume-high: **[Sound](sound.md)**
+
+    ---
+
+    Two pulse channels, blips, tunes, tempo, and the units passed to the host.
 
 </div>
 
@@ -38,5 +50,6 @@ Rooms are 16×16 tiles. The logical screen is 128×128 pixels. See [Architecture
 
 - [Bitsy](https://bitsy.org) — official editor and website
 - [Bitsy System API](https://make.bitsy.org/docs/technical/system/) — host layer contract used by bitsybox and the web runtime
+- [Bitsy documentation](https://make.bitsy.org/docs/) — editor and engine reference these pages restate
 - [bitsy-parser](https://docs.rs/bitsy-parser) — Rust parser for cross-checking format behavior
 - [Bitsy Wiki / FAQ](https://bitsy.fandom.com/wiki/FAQ) — community documentation on variables, colors, and scripting

@@ -74,7 +74,9 @@ The documentation website is at **https://teriyakigod.github.io/citsy/** (source
 | [Tools & build](docs/tools.md) | CMake options, compilers, dependencies, build targets |
 | [Testing](docs/testing.md) | Running tests, writing tests, fixtures, MockHost |
 | [Bitsy data model](docs/bitsy/data-model.md) | Entity types, properties, file syntax, relationships |
-| [Dialog scripting](docs/bitsy/dialog.md) | Variables, lists, inventory, `{end}` / `{exit}` |
+| [Dialog scripting](docs/bitsy/dialog.md) | Pages, lists, actions, inventory, `{end}` / `{exit}` |
+| [Gameplay](docs/bitsy/gameplay.md) | Movement, items, exits, endings, text settings |
+| [Sound](docs/bitsy/sound.md) | Blips, tunes, and the two pulse channels |
 
 For agent-oriented conventions, see [AGENTS.md](AGENTS.md).
 
@@ -136,8 +138,8 @@ The host implements `citsy::Host` — a C++ analogue of the `bitsy` global objec
 | `kVideoSize` | 128 | Main framebuffer edge in pixels (16 × 8) |
 | `kGfxVideo` | 0 | Direct per-pixel framebuffer mode |
 | `kGfxMap` | 1 | Tilemap mode (normal gameplay) |
-| `kTxtHirez` | 0 | Textbox at 2× pixel scale |
-| `kTxtLorez` | 1 | Textbox at 4× pixel scale |
+| `kTxtHirez` | 0 | Default text; 2× pixel scale (twice the display resolution) |
+| `kTxtLorez` | 1 | Chunky text; 4× pixel scale (same resolution as the display) |
 
 ### Buttons
 
@@ -148,7 +150,7 @@ The host implements `citsy::Host` — a C++ analogue of the `bitsy` global objec
 | `Left` | Move avatar / menu left |
 | `Right` | Move avatar / menu right |
 | `Ok` | Interact, advance dialog |
-| `Menu` | Pause / restart (host-defined) |
+| `Menu` | Restart (host reloads the game) |
 
 The host normalizes keyboard, gamepad, and touch into these six logical buttons.
 
