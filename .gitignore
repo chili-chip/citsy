@@ -1,4 +1,5 @@
 build/
+build-web/
 .cache/
 *.o
 *.a
