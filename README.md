@@ -64,7 +64,7 @@ This makes the engine embeddable in game jams, retro handhelds, test harnesses, 
 
 ## Documentation
 
-The documentation website is at **https://teriyakigod.github.io/citsy/** (source in [`docs/`](docs/README.md)):
+The documentation website is at **https://chili-chip.github.io/citsy/** (source in [`docs/`](docs/README.md)):
 
 | Guide | Contents |
 |---|---|
@@ -220,7 +220,7 @@ public:
 
 Backends implement `present()` differently:
 
-- **32blit** — paletted blit of the 128×128 index buffer into the handheld/desktop framebuffer; square-wave audio via `channels[]`. See the companion [citsy-32blit](https://github.com/TeriyakiGod/citsy-32blit) player.
+- **32blit** — paletted blit of the 128×128 index buffer into the handheld/desktop framebuffer; square-wave audio via `channels[]`. See the companion [citsy-32blit](https://github.com/chili-chip/citsy-32blit) player.
 - **MockHost** — record buffer snapshots for unit tests; no window.
 
 ### Palette updates
@@ -355,7 +355,7 @@ ctest --test-dir build
 
 See [docs/tools.md](docs/tools.md) for CMake options, build targets, and dependency details. See [docs/testing.md](docs/testing.md) for test filtering, fixtures, and writing new tests.
 
-The 32blit reference player is a separate repository: [citsy-32blit](https://github.com/TeriyakiGod/citsy-32blit).
+The 32blit reference player is a separate repository: [citsy-32blit](https://github.com/chili-chip/citsy-32blit).
 
 ---
 
@@ -402,7 +402,7 @@ int main() {
 
 ### 32blit player
 
-The Phase 4 host lives in **[citsy-32blit](https://github.com/TeriyakiGod/citsy-32blit)** (from the [chili-chip/game-template](https://github.com/chili-chip/game-template)). It implements `citsy::Host` with the 32blit SDK, so the same binary runs on desktop SDL and on VGC Zero / 32blit hardware.
+The Phase 4 host lives in **[citsy-32blit](https://github.com/chili-chip/citsy-32blit)** (from the [chili-chip/game-template](https://github.com/chili-chip/game-template)). It implements `citsy::Host` with the 32blit SDK, so the same binary runs on desktop SDL and on VGC Zero / 32blit hardware.
 
 ```bash
 cd ../citsy-32blit
@@ -445,7 +445,7 @@ Development is staged toward practical compatibility with games made in current 
   - [x] RTL text direction
 
 - [x] **Phase 4 — 32blit player**
-  - [x] 32blit `Host` in the companion [citsy-32blit](https://github.com/TeriyakiGod/citsy-32blit) repo
+  - [x] 32blit `Host` in the companion [citsy-32blit](https://github.com/chili-chip/citsy-32blit) repo
   - [x] Load `.bitsy` from packed assets, disk, or `--launch_path`
   - [x] Desktop SDL build (same project also targets VGC Zero)
 
@@ -460,7 +460,7 @@ Compatibility fixtures will be drawn from the [Bitsy community](https://bitsy.or
 - [Bitsy System API](https://make.bitsy.org/docs/technical/system/) — host system layer specification
 - [bitsybox](https://github.com/le-doux/bitsybox) — desktop runtime with SDL host implementation
 - [bitsy-parser](https://docs.rs/bitsy-parser) — Rust parser useful for cross-checking file format behavior
-- [citsy-32blit](https://github.com/TeriyakiGod/citsy-32blit) — 32blit player (desktop + VGC Zero)
+- [citsy-32blit](https://github.com/chili-chip/citsy-32blit) — 32blit player (desktop + VGC Zero)
 - [Bitsy Wiki / FAQ](https://bitsy.fandom.com/wiki/FAQ) — community documentation on variables, colors, and data format
 
 ---

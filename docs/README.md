@@ -1,6 +1,6 @@
 # citsy documentation
 
-The documentation website is published at **https://teriyakigod.github.io/citsy/**.
+The documentation website is published at **https://chili-chip.github.io/citsy/**.
 
 Supplementary documentation for the citsy project. For a high-level overview, design goals, and roadmap, see the [main README](../README.md).
 

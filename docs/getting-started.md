@@ -15,7 +15,7 @@ The core library has **no** runtime dependency on windowing, GPU, or audio libra
 ## Build and test
 
 ```bash
-git clone https://github.com/TeriyakiGod/citsy.git
+git clone https://github.com/chili-chip/citsy.git
 cd citsy
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
@@ -126,7 +126,7 @@ add_subdirectory(path/to/citsy)
 target_link_libraries(my_app PRIVATE citsy)
 ```
 
-To play a `.bitsy` file on desktop without writing a host, use [citsy-32blit](https://github.com/TeriyakiGod/citsy-32blit).
+To play a `.bitsy` file on desktop without writing a host, use [citsy-32blit](https://github.com/chili-chip/citsy-32blit).
 
 !!! tip "Start with MockHost"
 
@@ -140,4 +140,4 @@ The full host contract — buttons, memory blocks, graphics modes — is documen
 - Mix audio samples (it only emits square-wave *parameters*)
 - Author or export Bitsy games — use [bitsy.org](https://bitsy.org)
 
-Those jobs belong in a backend. The 32blit player is [citsy-32blit](https://github.com/TeriyakiGod/citsy-32blit).
+Those jobs belong in a backend. The 32blit player is [citsy-32blit](https://github.com/chili-chip/citsy-32blit).

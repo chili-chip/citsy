@@ -14,7 +14,7 @@ citsy is engine only. It parses `.bitsy` data, simulates the world, and writes l
 
 [Get started](getting-started.md){ .md-button .md-button--primary }
 [Host API](host.md){ .md-button }
-[GitHub](https://github.com/TeriyakiGod/citsy){ .md-button }
+[GitHub](https://github.com/chili-chip/citsy){ .md-button }
 
 </div>
 
@@ -66,7 +66,7 @@ Each frame:
 ## Quick start
 
 ```bash
-git clone https://github.com/TeriyakiGod/citsy.git
+git clone https://github.com/chili-chip/citsy.git
 cd citsy
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build

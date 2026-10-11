@@ -2,7 +2,7 @@
 
 The host implements `citsy::Host` — a C++ analogue of the `bitsy` global object from the [Bitsy System API](https://make.bitsy.org/docs/technical/system/). The engine calls into the host for **input** and **time**; the host reads **memory blocks** and **audio state** that the engine owns.
 
-Headers: [`include/citsy/host.hpp`](https://github.com/TeriyakiGod/citsy/blob/main/include/citsy/host.hpp), [`include/citsy/types.hpp`](https://github.com/TeriyakiGod/citsy/blob/main/include/citsy/types.hpp).
+Headers: [`include/citsy/host.hpp`](https://github.com/chili-chip/citsy/blob/main/include/citsy/host.hpp), [`include/citsy/types.hpp`](https://github.com/chili-chip/citsy/blob/main/include/citsy/types.hpp).
 
 ## Constants
 
@@ -165,13 +165,13 @@ The system API is still marked experimental upstream and can change before 1.0. 
 | Backend | Status | Use case |
 |---|---|---|
 | **MockHost** | Implemented | Unit tests; records `PresentSnapshot` per frame |
-| **32blit** | Implemented | Companion [citsy-32blit](https://github.com/TeriyakiGod/citsy-32blit) player |
+| **32blit** | Implemented | Companion [citsy-32blit](https://github.com/chili-chip/citsy-32blit) player |
 
 MockHost is header-only (`backends/mock/mock_host.hpp`). It stores every `present()` call so tests can assert on buffer sizes, palette colors, and graphics mode without a display. See [Testing](testing.md#mockhost).
 
 ### Implementing `present()`
 
-- **32blit** — Paletted blit of the 128×128 index buffer; square-wave audio on `channels[]`. Implemented in [citsy-32blit](https://github.com/TeriyakiGod/citsy-32blit).
+- **32blit** — Paletted blit of the 128×128 index buffer; square-wave audio on `channels[]`. Implemented in [citsy-32blit](https://github.com/chili-chip/citsy-32blit).
 - **MockHost** — Record snapshots; no window.
 
 !!! warning "Keep platform code out of core"
