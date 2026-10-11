@@ -246,8 +246,6 @@ The test suite is designed for headless CI:
 - Catch2 fetched at configure time (needs network on first build)
 - All tests complete in well under one second
 
-`.github/workflows/tests.yml` runs these steps on every push to `main` and on every pull request.
-
 Minimal CI recipe:
 
 ```bash
@@ -255,6 +253,8 @@ cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+`.github/workflows/tests.yml` runs this recipe on every push to `main`, on every pull request and on manual dispatch, with `-DCMAKE_BUILD_TYPE=Debug -DCITSY_BUILD_TESTS=ON -DCITSY_BUILD_EXAMPLES=ON`, so a change that breaks the examples fails CI too.
 
 To skip tests in a CI job that only validates compilation:
 
