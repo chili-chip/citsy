@@ -99,7 +99,7 @@ An exit can require a condition before it warps. The usual pattern is a door tha
 
 An ending tile shows that ending's text and then stops the game (`is_running()` becomes false). Endings have no transition effect. `{end}` inside any other dialog stops the game after the box closes, with no separate ending message.
 
-A locked ending cancels the finish. citsy leaves the avatar on the current tile and starts the room tune again. The [exits and endings](https://make.bitsy.org/docs/tools/exitsandendings/) page describes the editor sending the player back to the previous room when an ending's lock condition fails.
+A locked ending (`{property locked true}` in the ending's text) cancels the finish: the ending text is shown, the game keeps running, the avatar stays on the ending tile and the room tune starts again. This matches upstream Bitsy's engine, whose `startEndingDialog` in `engine/bitsy.js` only clears `isEnding` and restarts the tune when `ending.property.locked` is true; it never moves the avatar. (The [exits and endings](https://make.bitsy.org/docs/tools/exitsandendings/) page can read as if the player is sent back to the previous room; the engine code does not do that.) One small difference: upstream restarts the tune that was playing when the ending started, citsy restarts the current room's tune.
 
 ---
 
