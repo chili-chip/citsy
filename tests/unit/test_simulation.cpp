@@ -929,6 +929,37 @@ TEST_CASE("sim: ending tile shows text then stops the game", "[engine][sim][endi
     CHECK_FALSE(engine.is_running());
 }
 
+// Upstream Bitsy (engine/bitsy.js, startEndingDialog) only clears isEnding on a
+// locked ending: the avatar stays on the ending tile and the game keeps running.
+TEST_CASE("sim: locked ending keeps the game running on the ending tile", "[engine][sim][ending]") {
+    auto src = bitsy_game({
+        std::string(kPal),
+        room0(empty_grid(), "END 0 5,4\n"),
+        avatar_at(4, 4),
+        "END 0\n\"\"\"\n{property locked true}Not yet.\n\"\"\"\nNAME gate\n",
+    });
+    citsy::Engine engine(src);
+    citsy::MockHost host;
+    engine.start(host);
+
+    tap(engine, host, citsy::Button::Right);
+    CHECK(engine.avatar_x() == 5);
+    REQUIRE(engine.dialog_active());
+    CHECK(engine.dialog_line() == "Not yet.");
+
+    press_ok(engine, host);
+    CHECK_FALSE(engine.dialog_active());
+    CHECK(engine.is_running());
+    CHECK(engine.current_room_id() == "0");
+    CHECK(engine.avatar_x() == 5);
+    CHECK(engine.avatar_y() == 4);
+
+    // The player can walk on afterwards.
+    tap(engine, host, citsy::Button::Left);
+    CHECK(engine.avatar_x() == 4);
+    CHECK(engine.is_running());
+}
+
 TEST_CASE("sim: {end} in dialog stops the game after the box closes", "[engine][sim][ending]") {
     auto src = bitsy_game({
         std::string(kPal),
