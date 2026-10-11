@@ -246,6 +246,8 @@ The test suite is designed for headless CI:
 - Catch2 fetched at configure time (needs network on first build)
 - All tests complete in well under one second
 
+`.github/workflows/tests.yml` runs these steps on every push to `main` and on every pull request.
+
 Minimal CI recipe:
 
 ```bash
