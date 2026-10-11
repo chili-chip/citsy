@@ -1,8 +1,8 @@
 site_name: citsy
 site_description: Headless C++ reimplementation of the Bitsy game engine
-site_url: https://teriyakigod.github.io/citsy/
-repo_url: https://github.com/TeriyakiGod/citsy
-repo_name: TeriyakiGod/citsy
+site_url: https://chili-chip.github.io/citsy/
+repo_url: https://github.com/chili-chip/citsy
+repo_name: chili-chip/citsy
 edit_uri: edit/main/docs/
 copyright: >
   Not affiliated with Adam Le Doux or the official Bitsy project.
@@ -54,7 +54,7 @@ extra_css:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/TeriyakiGod/citsy
+      link: https://github.com/chili-chip/citsy
       name: citsy on GitHub
 
 exclude_docs: |

@@ -30,7 +30,7 @@ Development is staged toward practical compatibility with games made in current 
     - [x] RTL text direction
 
 - [x] **Phase 4 — 32blit player**
-    - [x] 32blit `Host` in [citsy-32blit](https://github.com/TeriyakiGod/citsy-32blit)
+    - [x] 32blit `Host` in [citsy-32blit](https://github.com/chili-chip/citsy-32blit)
     - [x] Load `.bitsy` from packed assets, disk, or `--launch_path`
     - [x] Desktop SDL build
 

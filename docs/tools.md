@@ -98,7 +98,7 @@ None. The `citsy` target is a self-contained static library with only standard C
 
 ### Display host (32blit)
 
-The playable host is a separate 32blit project: [citsy-32blit](https://github.com/TeriyakiGod/citsy-32blit). It uses the 32blit SDK (desktop SDL or VGC Zero) and links the `citsy` library. It is not a CMake option of this repo.
+The playable host is a separate 32blit project: [citsy-32blit](https://github.com/chili-chip/citsy-32blit). It uses the 32blit SDK (desktop SDL or VGC Zero) and links the `citsy` library. It is not a CMake option of this repo.
 
 ---
 
@@ -215,7 +215,7 @@ mkdocs serve
 
 Open http://127.0.0.1:8000. `mkdocs build --strict` produces the static site in `site/`.
 
-The published site is https://teriyakigod.github.io/citsy/, served from the `gh-pages` branch. After changing docs:
+The published site is https://chili-chip.github.io/citsy/, served from the `gh-pages` branch. After changing docs:
 
 ```bash
 mkdocs build --strict

@@ -44,7 +44,7 @@ The engine **never** calls platform APIs (no windowing, GPU, or audio libraries 
 |---|---|
 | Core is headless | The `citsy` library must not link 32blit, SDL, OpenGL, or any audio/window library |
 | Engine never draws | Core writes memory blocks; only backends call platform APIs in `Host::present()` |
-| Display hosts | Out of tree | MockHost is in-tree and header-only; 32blit is [citsy-32blit](https://github.com/TeriyakiGod/citsy-32blit) |
+| Display hosts | Out of tree | MockHost is in-tree and header-only; 32blit is [citsy-32blit](https://github.com/chili-chip/citsy-32blit) |
 | No JS runtime | Engine logic is native C++; `.bitsy` files are parsed directly |
 | No editor | Author games with [bitsy.org](https://bitsy.org); citsy is runtime only |
 
@@ -230,7 +230,7 @@ Backends implement `citsy::Host` (`include/citsy/host.hpp`):
 | Backend | Status | Use case |
 |---|---|---|
 | **MockHost** | Implemented | Unit tests; records `PresentSnapshot` per frame |
-| **32blit** | Implemented | Companion player repo [citsy-32blit](https://github.com/TeriyakiGod/citsy-32blit) (desktop SDL + VGC Zero) |
+| **32blit** | Implemented | Companion player repo [citsy-32blit](https://github.com/chili-chip/citsy-32blit) (desktop SDL + VGC Zero) |
 
 MockHost is header-only (`backends/mock/mock_host.hpp`). It stores every `present()` call in `snapshots` so tests can assert on buffer sizes, palette colors, and graphics mode without a display.
 
