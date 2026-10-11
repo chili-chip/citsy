@@ -1,6 +1,6 @@
 name: Tests
 
-# Build the citsy library and run the Catch2 unit tests in tests/unit.
+# Build the citsy library and examples, then run the Catch2 unit tests in tests/unit.
 on:
   push:
     branches: [main]
@@ -17,7 +17,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCITSY_BUILD_TESTS=ON -DCITSY_BUILD_EXAMPLES=OFF
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DCITSY_BUILD_TESTS=ON -DCITSY_BUILD_EXAMPLES=ON
 
       - name: Build
         run: cmake --build build --parallel
