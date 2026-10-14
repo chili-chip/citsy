@@ -525,6 +525,13 @@ std::vector<std::vector<TextSpan>> paginate_spans(
                 const char32_t cp = next_codepoint(rest);
                 const FontGlyph& g = font.glyph(cp);
                 if (c.cx + g.spacing > max_x_of(layout) && c.cx > layout.margin) {
+                    // The space does not fit: break the row here. Keep the break
+                    // as a "\n" so render_textbox does not see the words on
+                    // either side as one word (citsy#13).
+                    const bool np = newline(c, layout, font.height, true);
+                    if (np) flush_page();
+                    else append_run(cur, sp, "\n");
+                    while (!rest.empty() && is_wrap_space(rest.front())) rest.remove_prefix(1);
                     continue;
                 }
                 append_run(cur, sp, std::string(before.data(), before.size() - rest.size()));
@@ -623,6 +630,10 @@ std::vector<std::uint8_t> render_textbox(
                 const char32_t cp = next_codepoint(rest);
                 const FontGlyph& g = font.glyph(cp);
                 if (c.cx + g.spacing > max_x_of(layout) && c.cx > layout.margin) {
+                    // The space does not fit: break the row here, so a short next
+                    // word can't land right after the previous one (citsy#13).
+                    newline(c, layout, font.height, false);
+                    while (!rest.empty() && is_wrap_space(rest.front())) rest.remove_prefix(1);
                     continue;
                 }
                 Placed p;

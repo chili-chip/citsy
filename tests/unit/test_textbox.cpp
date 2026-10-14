@@ -848,3 +848,36 @@ DLG SPR_1
     CHECK(engine.dialog_line() == "the spores need watering");
     dismiss_dialog(engine, host);
 }
+
+TEST_CASE("textbox: a space dropped at the end of a full row still separates the words",
+          "[font][textbox][wrap]") {
+    // chili-chip/citsy#13: "CDEFG" ends exactly at the right edge of row 1, so
+    // the following space does not fit. Pagination used to drop that space,
+    // gluing "CDEFG" and "HI" into one word that render_textbox then moved
+    // to row 2 as "CDEFGHI".
+    auto f = citsy::default_font();
+    auto layout = box(53, 32);  // 8 glyphs / row
+    auto pages = citsy::paginate_spans(f, {span("AB CDEFG HI")}, layout);
+    REQUIRE(pages.size() == 1);
+    const std::string plain = citsy::spans_to_plain(pages[0]);
+    CHECK(plain.find("CDEFGHI") == std::string::npos);
+    auto pix = citsy::render_textbox(f, pages[0], layout);
+    // "CDEFG" stays on row 1 (x 20..50), "HI" starts row 2.
+    int row1_right = 0;
+    for (int y = 2; y < 10; ++y) {
+        for (int x = 44; x < 50; ++x) {
+            if (pix[static_cast<std::size_t>(y * 53 + x)] == citsy::kTextboxWhite) ++row1_right;
+        }
+    }
+    CHECK(row1_right > 0);
+    CHECK(ink_on_row_range(pix, 53, 11, 19) > 0);
+}
+
+TEST_CASE("textbox: extra spaces at a row break don't indent the next row",
+          "[font][textbox][wrap]") {
+    auto f = citsy::default_font();
+    auto layout = box(53, 32);
+    auto pages = citsy::paginate_spans(f, {span("ABCDEFGH   IJ")}, layout);
+    REQUIRE(pages.size() == 1);
+    CHECK(citsy::spans_to_plain(pages[0]) == "ABCDEFGH\nIJ");
+}
