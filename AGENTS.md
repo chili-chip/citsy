@@ -6,6 +6,23 @@ Read `README.md` for full design docs and `docs/` for detailed guides on [archit
 
 ---
 
+## Test-driven development (required)
+
+Write the tests before the code they test. This applies to every change in behaviour: new features, bug fixes, and refactors (there the tests prove nothing changed).
+
+1. **Red.** Write the tests first: unit tests for the logic, integration tests where the change crosses a boundary (HTTP API, database, payment provider, file format, engine/host interface), and an end-to-end test for a user-visible flow when this repo has an E2E harness. Run them and watch them fail for the reason you expect.
+2. **Green.** Write the smallest change that makes them pass.
+3. **Refactor.** Clean up with everything green, then run the whole suite before you push.
+
+- A bug fix starts with a test that reproduces the bug.
+- When a kind of test is not possible here yet (no harness for that layer, or behaviour that only shows on the console), say so in the PR description and list the manual steps you ran instead.
+- Never skip, disable or weaken an existing test to get to green.
+- Name the tests you wrote first in the PR description.
+
+In this repo: unit tests in `tests/unit/` run against `MockHost`, and `.bitsy` fixtures in `tests/data/` are the integration tests for the file format and simulation. Add the fixture and the failing test first. Run `cmake -S . -B build -DCITSY_BUILD_TESTS=ON && cmake --build build && ctest --test-dir build --output-on-failure`. End to end: play the change in the 32blit player (chili-chip/citsy-32blit).
+
+---
+
 ## Mission
 
 Build a **Bitsy-compatible game engine** in modern C++ that:
@@ -173,6 +190,6 @@ Requirements: CMake 3.20+, C++20 compiler (GCC 11+, Clang 14+, MSVC 19.29+). See
 - [ ] Code lives in the correct module (`src/` vs `backends/mock`; display hosts stay out of core)
 - [ ] Core library has zero platform/media dependencies
 - [ ] Public API changes reflected in `include/citsy/`
-- [ ] Behavior covered by unit tests where practical
+- [ ] Tests written first and seen failing (TDD), then made to pass; unit tests plus `.bitsy` fixture tests
 - [ ] `.bitsy` fixtures added for new format or simulation features
 - [ ] README/AGENTS.md updated only when architecture or conventions change
