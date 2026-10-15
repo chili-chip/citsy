@@ -24,3 +24,48 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+  # Line coverage of src/ and include/, for information only: the target is 80%
+  # (AGENTS.md), and a lower number never fails this job or blocks the PR.
+  coverage:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    env:
+      TARGET: "80"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Build with coverage
+        run: |
+          cmake -S . -B build-cov -DCMAKE_BUILD_TYPE=Debug -DCITSY_BUILD_TESTS=ON -DCITSY_BUILD_EXAMPLES=OFF \
+            -DCMAKE_CXX_FLAGS=--coverage -DCMAKE_C_FLAGS=--coverage -DCMAKE_EXE_LINKER_FLAGS=--coverage
+          cmake --build build-cov --parallel
+
+      - name: Test
+        run: ctest --test-dir build-cov --output-on-failure
+
+      - name: Report coverage (target 80%, information only)
+        if: always()
+        run: |
+          pipx run gcovr==7.2 --root . --filter 'src/' --filter 'include/' --object-directory build-cov \
+            --json-summary coverage.json --txt coverage.txt
+          total=$(python3 -c "import json; print(round(json.load(open('coverage.json'))['line_percent'], 1))")
+          {
+            echo "## Code coverage: ${total}% of lines (target ${TARGET}%)"
+            echo
+            echo "Information only: this check never blocks a pull request."
+            echo
+            echo "<details><summary>Per file</summary>"
+            echo
+            echo '```'
+            cat coverage.txt
+            echo '```'
+            echo
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"
+          if python3 -c "import sys; sys.exit(0 if float('$total') >= float('$TARGET') else 1)"; then
+            echo "::notice title=Code coverage::${total}% of lines (target ${TARGET}%)"
+          else
+            echo "::warning title=Code coverage below target::${total}% of lines, target ${TARGET}%. Information only, not blocking."
+          fi

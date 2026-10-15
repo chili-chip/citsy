@@ -18,6 +18,8 @@ Write the tests before the code they test. This applies to every change in behav
 - When a kind of test is not possible here yet (no harness for that layer, or behaviour that only shows on the console), say so in the PR description and list the manual steps you ran instead.
 - Never skip, disable or weaken an existing test to get to green.
 - Name the tests you wrote first in the PR description.
+- **Code coverage: we aim for 80% of lines.** It is a target, not a gate: a pull request below 80% is not refused. Do not lower coverage without a reason in the PR.
+- Coverage is reported on every pull request by the `coverage` job in CI (gcovr; summary page and a notice on the checks). It never blocks the PR.
 
 In this repo: unit tests in `tests/unit/` run against `MockHost`, and `.bitsy` fixtures in `tests/data/` are the integration tests for the file format and simulation. Add the fixture and the failing test first. Run `cmake -S . -B build -DCITSY_BUILD_TESTS=ON && cmake --build build && ctest --test-dir build --output-on-failure`. End to end: play the change in the 32blit player (chili-chip/citsy-32blit).
 
