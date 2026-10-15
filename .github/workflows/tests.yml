@@ -48,8 +48,14 @@ jobs:
       - name: Report coverage (target 80%, information only)
         if: always()
         run: |
-          pipx run gcovr==7.2 --root . --filter 'src/' --filter 'include/' --object-directory build-cov \
-            --json-summary coverage.json --txt coverage.txt
+          # Catch2 is built in build-cov/_deps with the same flags; skip its
+          # data files, whose sources gcov cannot find.
+          if ! pipx run gcovr==7.2 --root . --filter 'src/' --filter 'include/' --object-directory build-cov \
+            --gcov-exclude-directories '.*/_deps(/.*)?$' --gcov-ignore-errors=no_working_dir_found \
+            --json-summary coverage.json --txt coverage.txt; then
+            echo "::warning title=Code coverage::gcovr could not build the report. Information only, not blocking."
+            exit 0
+          fi
           total=$(python3 -c "import json; print(round(json.load(open('coverage.json'))['line_percent'], 1))")
           {
             echo "## Code coverage: ${total}% of lines (target ${TARGET}%)"
