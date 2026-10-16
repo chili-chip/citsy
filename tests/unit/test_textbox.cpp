@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 
 #include <citsy/engine.hpp>
 #include <citsy/types.hpp>
@@ -880,4 +881,110 @@ TEST_CASE("textbox: extra spaces at a row break don't indent the next row",
     auto pages = citsy::paginate_spans(f, {span("ABCDEFGH   IJ")}, layout);
     REQUIRE(pages.size() == 1);
     CHECK(citsy::spans_to_plain(pages[0]) == "ABCDEFGH\nIJ");
+}
+
+// ---------------------------------------------------------------------------
+// Sentence-aware page breaks (chili-chip/citsy#14)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::string pages_text(const std::vector<std::vector<citsy::TextSpan>>& pages) {
+    std::string all;
+    for (const auto& page : pages) all += citsy::spans_to_plain(page);
+    return all;
+}
+
+} // namespace
+
+TEST_CASE("paginate: a sentence that would straddle two screens starts on the next one",
+          "[font][textbox][page][sentence]") {
+    // 8 glyphs x 3 rows per screen. Fit-only paging shows "AA BB. CCCC / DDDD"
+    // and then "EEEE FF." on screen 2, cutting the second sentence in half.
+    auto f = citsy::default_font();
+    auto layout = box(53, 32);
+    const std::string end = GENERATE(std::string("."), std::string("!"),
+                                     std::string("?"), std::string("..."));
+    auto pages = citsy::paginate_spans(
+        f, {span("AA BB" + end + " CCCC DDDD EEEE FF.")}, layout);
+    REQUIRE(pages.size() == 2);
+    CHECK(citsy::spans_to_plain(pages[0]) == "AA BB" + end);
+    CHECK(citsy::spans_to_plain(pages[1]) == "CCCC DDDD EEEE FF.");
+}
+
+TEST_CASE("paginate: a sentence longer than one screen still breaks on fit",
+          "[font][textbox][page][sentence]") {
+    auto f = citsy::default_font();
+    auto layout = box(53, 32);
+    const std::string longest(80, 'A');
+    auto pages = citsy::paginate_spans(f, {span("HI. " + longest + ".")}, layout);
+    REQUIRE(pages.size() >= 3);
+    CHECK(citsy::spans_to_plain(pages[0]) == "HI.");
+    const std::string all = pages_text(pages);
+    CHECK(std::count(all.begin(), all.end(), 'A') == 80);
+}
+
+TEST_CASE("paginate: a dot inside a word does not end the sentence",
+          "[font][textbox][page][sentence]") {
+    auto f = citsy::default_font();
+    auto layout = box(53, 32);
+    auto pages = citsy::paginate_spans(f, {span("AA 3.5 CCCC DDDD EEEE FF.")}, layout);
+    REQUIRE(pages.size() == 2);
+    CHECK(citsy::spans_to_plain(pages[0]) == "AA 3.5 CCCC DDDD ");
+    CHECK(citsy::spans_to_plain(pages[1]) == "EEEE FF.");
+}
+
+TEST_CASE("paginate: keep_sentences off pages on fit only",
+          "[font][textbox][page][sentence]") {
+    auto f = citsy::default_font();
+    auto layout = box(53, 32);
+    layout.keep_sentences = false;
+    auto pages = citsy::paginate_spans(f, {span("AA BB. CCCC DDDD EEEE FF.")}, layout);
+    REQUIRE(pages.size() == 2);
+    CHECK(citsy::spans_to_plain(pages[0]) == "AA BB. CCCC DDDD ");
+    CHECK(citsy::spans_to_plain(pages[1]) == "EEEE FF.");
+}
+
+TEST_CASE("paginate: a sentence split across spans moves as a whole",
+          "[font][textbox][page][sentence]") {
+    auto f = citsy::default_font();
+    auto layout = box(53, 32);
+    auto pages = citsy::paginate_spans(
+        f,
+        {span("AA BB. CCCC "), span("DDDD", citsy::GlyphFx::Wavy), span(" EEEE FF.")},
+        layout);
+    REQUIRE(pages.size() == 2);
+    CHECK(citsy::spans_to_plain(pages[0]) == "AA BB.");
+    CHECK(citsy::spans_to_plain(pages[1]) == "CCCC DDDD EEEE FF.");
+    bool wavy_on_second = false;
+    for (const auto& sp : pages[1]) {
+        if (sp.effects & citsy::GlyphFx::Wavy) wavy_on_second = true;
+    }
+    CHECK(wavy_on_second);
+}
+
+TEST_CASE("engine: a sentence is not split across dialog screens",
+          "[engine][textbox][page][sentence]") {
+    citsy::Engine engine(game_src(
+        "", "HELLO THERE. THE MOSS NEEDS WATER EACH DAY OR IT WILL DIE."));
+    citsy::MockHost host;
+    engine.start(host);
+    engine.update(host);
+    REQUIRE(engine.dialog_active());
+    CHECK(engine.dialog_line() == "HELLO THERE.");
+    press_ok(engine, host);
+    REQUIRE(engine.dialog_active());
+    const std::string second(engine.dialog_line());
+    CHECK(second.find("THE MOSS") == 0);
+    CHECK(second.find("DIE.") != std::string::npos);
+}
+
+TEST_CASE("paginate: a sentence with a line break inside moves as a whole",
+          "[font][textbox][page][sentence]") {
+    auto f = citsy::default_font();
+    auto layout = box(53, 32);
+    auto pages = citsy::paginate_spans(f, {span("AA BB. CC\nDD\nEE FF.")}, layout);
+    REQUIRE(pages.size() == 2);
+    CHECK(citsy::spans_to_plain(pages[0]) == "AA BB.");
+    CHECK(citsy::spans_to_plain(pages[1]) == "CC\nDD\nEE FF.");
 }

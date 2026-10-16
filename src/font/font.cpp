@@ -452,6 +452,25 @@ void append_run(std::vector<TextSpan>& page, const TextSpan& proto, std::string 
     page.push_back(std::move(sp));
 }
 
+bool is_sentence_end(char32_t cp) {
+    return cp == '.' || cp == '!' || cp == '?';
+}
+
+bool has_printable(const std::vector<TextSpan>& page) {
+    return count_printable_chars(page) > 0;
+}
+
+/// Drop spaces and row breaks at the end of @p page, so a page cut before a
+/// sentence does not end in blank space.
+void trim_trailing_whitespace(std::vector<TextSpan>& page) {
+    while (!page.empty() && !page.back().is_drawing) {
+        std::string& t = page.back().text;
+        while (!t.empty() && (t.back() == '\n' || is_wrap_space(t.back()))) t.pop_back();
+        if (!t.empty()) return;
+        page.pop_back();
+    }
+}
+
 } // namespace
 
 void install_textbox_colors(std::span<Color> pal) {
@@ -499,61 +518,125 @@ std::vector<std::vector<TextSpan>> paginate_spans(
         cur = {};
     };
 
-    for (const auto& sp : spans) {
+    std::size_t si = 0;   // span being laid out
+    std::size_t pos = 0;  // byte offset into its text
+
+    // Sentence tracking for layout.keep_sentences (citsy#14).
+    bool after_end = false;      // last glyph was . ! ? (or a quote after one)
+    bool at_boundary = false;    // whitespace followed a sentence end
+    struct SentenceStart {
+        bool valid = false;
+        std::size_t si = 0, pos = 0, page = 0;
+        std::vector<TextSpan> before;  // the page as it was before the sentence
+    } start;
+
+    auto note_glyph = [&](char32_t cp) {
+        const bool closer = cp == '"' || cp == '\'' || cp == ')' ||
+                            cp == 0x201D || cp == 0x2019;  // ” ’
+        after_end = is_sentence_end(cp) || (after_end && closer);
+    };
+    auto note_space = [&] {
+        if (after_end) at_boundary = true;
+        after_end = false;
+    };
+    // Called where a new sentence's first glyph or drawing is about to go.
+    auto mark_sentence_start = [&] {
+        if (!at_boundary) return;
+        at_boundary = false;
+        start = {true, si, pos, pages.size(), cur};
+    };
+    // The page is full. Either move the unfinished sentence to the next page
+    // (returns true; layout resumes at its first glyph) or keep paging on fit.
+    auto next_page = [&]() -> bool {
+        if (layout.keep_sentences && start.valid && !at_boundary &&
+            start.page == pages.size() && has_printable(start.before)) {
+            cur = std::move(start.before);
+            trim_trailing_whitespace(cur);
+            flush_page();
+            c.cx = layout.margin;
+            c.cy = layout.margin;
+            c.line_h = font.height;
+            c.col = 0;
+            si = start.si;
+            pos = start.pos;
+            start.valid = false;
+            after_end = false;
+            return true;
+        }
+        flush_page();
+        return false;
+    };
+
+    while (si < spans.size()) {
+        const TextSpan& sp = spans[si];
         if (sp.is_drawing) {
+            mark_sentence_start();
             bool np = false;
             wrap_if_needed(c, kTileSize, layout, font.height, true, &np);
-            if (np) flush_page();
-            TextSpan d = sp;
-            cur.push_back(std::move(d));
+            if (np && next_page()) continue;
+            cur.push_back(sp);
             c.cx += kTileSize + 1;
             c.line_h = std::max(c.line_h, kTileSize);
+            after_end = false;
+            ++si;
+            pos = 0;
+            continue;
+        }
+        if (pos >= sp.text.size()) {
+            ++si;
+            pos = 0;
             continue;
         }
 
-        std::string_view rest = sp.text;
-        while (!rest.empty()) {
-            if (rest.front() == '\n') {
-                rest.remove_prefix(1);
-                const bool np = newline(c, layout, font.height, true);
-                if (np) flush_page();
-                else append_run(cur, sp, "\n");
+        const std::string_view text = sp.text;
+        std::string_view rest = text.substr(pos);
+        if (rest.front() == '\n') {
+            ++pos;
+            note_space();
+            if (!newline(c, layout, font.height, true)) append_run(cur, sp, "\n");
+            else next_page();
+            continue;
+        }
+        if (is_wrap_space(rest.front())) {
+            const char32_t cp = next_codepoint(rest);
+            const std::size_t len = text.size() - pos - rest.size();
+            note_space();
+            const FontGlyph& g = font.glyph(cp);
+            if (c.cx + g.spacing > max_x_of(layout) && c.cx > layout.margin) {
+                // The space does not fit: break the row here. Keep the break
+                // as a "\n" so render_textbox does not see the words on
+                // either side as one word (citsy#13).
+                if (!newline(c, layout, font.height, true)) append_run(cur, sp, "\n");
+                else if (next_page()) continue;
+                pos += len;
+                while (pos < text.size() && is_wrap_space(text[pos])) ++pos;
                 continue;
             }
-            if (is_wrap_space(rest.front())) {
-                const std::string_view before = rest;
-                const char32_t cp = next_codepoint(rest);
-                const FontGlyph& g = font.glyph(cp);
-                if (c.cx + g.spacing > max_x_of(layout) && c.cx > layout.margin) {
-                    // The space does not fit: break the row here. Keep the break
-                    // as a "\n" so render_textbox does not see the words on
-                    // either side as one word (citsy#13).
-                    const bool np = newline(c, layout, font.height, true);
-                    if (np) flush_page();
-                    else append_run(cur, sp, "\n");
-                    while (!rest.empty() && is_wrap_space(rest.front())) rest.remove_prefix(1);
-                    continue;
-                }
-                append_run(cur, sp, std::string(before.data(), before.size() - rest.size()));
-                c.cx += g.spacing;
-                c.line_h = std::max(c.line_h, g.height);
-                continue;
-            }
+            append_run(cur, sp, std::string(text.substr(pos, len)));
+            pos += len;
+            c.cx += g.spacing;
+            c.line_h = std::max(c.line_h, g.height);
+            continue;
+        }
+
+        if (pos == 0 || text[pos - 1] == '\n' || is_wrap_space(text[pos - 1])) {
+            // First glyph of a word in this span: wrap the whole word.
+            mark_sentence_start();
             bool np = false;
             wrap_if_needed(c, measure_word(font, rest), layout, font.height, true, &np);
-            if (np) flush_page();
-            while (!rest.empty() && rest.front() != '\n' && !is_wrap_space(rest.front())) {
-                const std::string_view before = rest;
-                const char32_t cp = next_codepoint(rest);
-                const FontGlyph& g = font.glyph(cp);
-                np = false;
-                wrap_if_needed(c, g.spacing, layout, font.height, true, &np);
-                if (np) flush_page();
-                append_run(cur, sp, std::string(before.data(), before.size() - rest.size()));
-                c.cx += g.spacing;
-                c.line_h = std::max(c.line_h, g.height);
-            }
+            if (np && next_page()) continue;
         }
+        const char32_t cp = next_codepoint(rest);
+        const std::size_t len = text.size() - pos - rest.size();
+        const FontGlyph& g = font.glyph(cp);
+        bool np = false;
+        wrap_if_needed(c, g.spacing, layout, font.height, true, &np);
+        if (np && next_page()) continue;
+        append_run(cur, sp, std::string(text.substr(pos, len)));
+        pos += len;
+        note_glyph(cp);
+        c.cx += g.spacing;
+        c.line_h = std::max(c.line_h, g.height);
     }
     flush_page();
     return pages;

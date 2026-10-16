@@ -18,6 +18,29 @@ The sections below follow the Bitsy 7+ script language as described in the [dial
 
 Unquoted text (common in lists) is one page unless a blank line or `{p}` splits it. A line that is too long **wraps whole words** onto the next row of the same box. Words are never split. If the box is full, leftover words start the next screen. `{br}` is an explicit newline.
 
+### Sentences stay on one screen
+
+citsy does not cut a sentence in half at the end of a screen. When a sentence would start on one screen and finish on the next, the whole sentence moves to the next screen. The previous screen ends after the last full sentence.
+
+A sentence ends at `.`, `!` or `?` followed by a space, a newline or the end of the text. A closing quote or bracket right after the mark (`."`, `!)`) still ends it. A dot inside a word, like `3.5`, does not.
+
+Example, 104×32 box (16 letters per row, 3 rows per screen):
+
+```
+HELLO THERE. THE MOSS NEEDS WATER EACH DAY OR IT WILL DIE.
+```
+
+| | Screen 1 | Screen 2 |
+|---|---|---|
+| Upstream Bitsy (fit only) | `HELLO THERE. THE` / `MOSS NEEDS WATER` / `EACH DAY OR IT` | `WILL DIE.` |
+| citsy | `HELLO THERE.` | `THE MOSS NEEDS` / `WATER EACH DAY` / `OR IT WILL DIE.` |
+
+A sentence that is longer than one screen starts on a new screen and then breaks on fit, like upstream Bitsy. `{p}` and `{pg}` work as before.
+
+This differs from upstream Bitsy, which only breaks on fit. It is on for every game. To get upstream paging, set `keep_sentences = false` on the `TextboxLayout` that `src/engine/engine.cpp` builds.
+
+### Quoted lines
+
 Adjacent quoted lines with no break are one page. The editor often merges them into a single string. A page break (`{p}`, `{pg}`, or a blank line inside a list or `"""` block) waits for `Ok` before anything after the break runs, including a later `{exit}` or `{end}`.
 
 `{exit}` and `{end}` themselves apply when the dialog closes, after the player has stepped through every page.
