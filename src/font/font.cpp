@@ -13,6 +13,8 @@ struct PackedGlyph {
 };
 
 // Bitsy ascii_small: 6×8, rows packed in the low 6 bits (MSB = left pixel).
+// Glyph data derived from Bitsy (MIT, Copyright (c) 2016-present, Bitsy
+// authors); see the Bitsy notice in LICENSE.
 constexpr PackedGlyph kAsciiSmall[] = {
     {0, {0, 0, 0, 0, 0, 0, 0, 0}},
     {32, {0, 0, 0, 0, 0, 0, 0, 0}},

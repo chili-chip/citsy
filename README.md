@@ -467,4 +467,6 @@ Compatibility fixtures will be drawn from the [Bitsy community](https://bitsy.or
 
 ## License
 
-License to be determined. Bitsy itself is open source; see the [reference repository](https://codeberg.org/adamledoux/bitsy) for its terms. Games you create with the Bitsy editor remain yours.
+citsy is released under the [MIT License](LICENSE).
+
+The built-in `ascii_small` font data is derived from [Bitsy](https://codeberg.org/adamledoux/bitsy), also MIT licensed; its copyright notice is kept in [LICENSE](LICENSE). Games you create with the Bitsy editor remain yours.
