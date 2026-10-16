@@ -79,6 +79,9 @@ struct TextboxLayout {
     /// Printable glyphs (letters, numbers, symbols, drawings) to draw.
     /// Whitespace never consumes this budget. Negative = draw the whole page.
     int visible_char_count = -1;
+    /// Start a sentence on the next screen instead of splitting it, unless it
+    /// is longer than one screen. Upstream Bitsy pages on fit only (citsy#14).
+    bool keep_sentences = true;
 };
 
 /// Render @p spans into a colour-index buffer of layout.width × layout.height.
