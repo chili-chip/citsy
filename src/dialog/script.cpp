@@ -1,842 +1,1054 @@
 #include "src/dialog/script.hpp"
 
 #include <algorithm>
-#include <cctype>
 #include <cmath>
-#include <numeric>
-#include <random>
-#include <sstream>
+#include <cstdint>
+#include <utility>
 
 namespace citsy {
+namespace script {
+
+// ===========================================================================
+// Nodes (script.js: DialogBlockNode, CodeBlockNode, FuncNode, LiteralNode,
+// VarNode, ExpNode, SequenceNode, CycleNode, ShuffleNode, IfNode, ElseNode,
+// UndefinedNode)
+// ===========================================================================
+
+enum class NodeType {
+    DialogBlock, CodeBlock, Function, Literal, Variable, Operator,
+    Sequence, Cycle, Shuffle, If, Else, Undefined,
+};
+
+struct Node {
+    NodeType type = NodeType::DialogBlock;
+    std::vector<std::unique_ptr<Node>> children;    ///< blocks; list options; if results
+    std::vector<std::unique_ptr<Node>> conditions;  ///< if
+    std::vector<std::unique_ptr<Node>> args;        ///< function
+    std::unique_ptr<Node> left, right;              ///< operator
+    std::string name;   ///< function / variable name, operator symbol, undefined source
+    DialogValue value;  ///< literal
+
+    // List state lives in the node, as in Bitsy.
+    std::size_t index = 0;
+    std::vector<std::size_t> shuffled;
+};
+
 namespace {
 
-std::string_view trim_sv(std::string_view s) {
-    auto ws = [](unsigned char c) {
-        return c == ' ' || c == '\t' || c == '\n' || c == '\r';
-    };
-    while (!s.empty() && ws(static_cast<unsigned char>(s.front()))) s.remove_prefix(1);
-    while (!s.empty() && ws(static_cast<unsigned char>(s.back()))) s.remove_suffix(1);
-    return s;
+std::unique_ptr<Node> make(NodeType t) {
+    auto n = std::make_unique<Node>();
+    n->type = t;
+    return n;
 }
 
-std::string unquote(std::string_view s) {
-    s = trim_sv(s);
-    if (s.size() >= 2 && s.front() == '"' && s.back() == '"') {
-        return std::string(s.substr(1, s.size() - 2));
-    }
+std::unique_ptr<Node> literal(DialogValue v) {
+    auto n = make(NodeType::Literal);
+    n->value = std::move(v);
+    return n;
+}
+
+const char* const kFunctions[] = {
+    "say", "br", "pg", "wvy", "/wvy", "shk", "/shk", "rbw", "/rbw", "clr", "/clr",
+    "drwt", "drws", "drwi", "end", "exit", "pal", "ava", "item", "property",
+    "tune", "blip", "clr1", "clr2", "clr3", "print", "printTile", "printSprite",
+    "printItem", "_debugOnlyPrintFont",
+};
+
+bool has_function(std::string_view name) {
+    return std::any_of(std::begin(kFunctions), std::end(kFunctions),
+                       [&](const char* f) { return name == f; });
+}
+
+bool is_sequence(std::string_view s) {
+    return s == "sequence" || s == "cycle" || s == "shuffle";
+}
+
+// JS String.prototype.trim (ASCII whitespace is all Bitsy data uses).
+std::string js_trim(std::string_view s) {
+    auto ws = [](char c) {
+        return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' || c == '\f';
+    };
+    while (!s.empty() && ws(s.front())) s.remove_prefix(1);
+    while (!s.empty() && ws(s.back())) s.remove_suffix(1);
     return std::string(s);
 }
 
-std::vector<std::string> split_args(std::string_view s) {
-    std::vector<std::string> out;
-    std::string cur;
-    bool in_str = false;
-    int depth = 0;
-    for (std::size_t i = 0; i < s.size(); ++i) {
-        char c = s[i];
-        if (c == '"' && (i == 0 || s[i - 1] != '\\')) {
-            in_str = !in_str;
-            cur.push_back(c);
-        } else if (!in_str && c == '{') {
-            ++depth;
-            cur.push_back(c);
-        } else if (!in_str && c == '}' && depth > 0) {
-            --depth;
-            cur.push_back(c);
-        } else if (!in_str && depth == 0 && (c == ' ' || c == '\t' || c == ',')) {
-            if (!cur.empty()) {
-                out.push_back(cur);
-                cur.clear();
-            }
-        } else {
-            cur.push_back(c);
-        }
-    }
-    if (!cur.empty()) out.push_back(cur);
-    return out;
+// JS str.slice(start, end) on a byte string; negative indices count from the end.
+std::string js_slice(const std::string& s, long start, long end) {
+    const long len = static_cast<long>(s.size());
+    if (start < 0) start = std::max(0L, len + start);
+    if (end < 0) end = std::max(0L, len + end);
+    start = std::min(start, len);
+    end = std::min(end, len);
+    if (start >= end) return {};
+    return s.substr(static_cast<std::size_t>(start), static_cast<std::size_t>(end - start));
 }
 
-bool looks_number(std::string_view s) {
-    s = trim_sv(s);
+// str.slice(n) where n counts UTF-16 code units, on UTF-8 text.
+std::string slice_units(const std::string& s, int units) {
+    std::size_t i = 0;
+    while (units > 0 && i < s.size()) {
+        const auto c = static_cast<unsigned char>(s[i]);
+        std::size_t len = 1;
+        int u = 1;
+        if (c >= 0xF0) { len = 4; u = 2; }
+        else if (c >= 0xE0) len = 3;
+        else if (c >= 0xC0) len = 2;
+        i += len;
+        units -= u;
+    }
+    return i >= s.size() ? std::string{} : s.substr(i);
+}
+
+// Cut the trailing "\n" that list parsing appends (JS slice(0, -1)).
+void drop_last(std::string& s) {
+    if (s.empty()) return;
+    std::size_t i = s.size() - 1;
+    while (i > 0 && (static_cast<unsigned char>(s[i]) & 0xC0) == 0x80) --i;
+    s.erase(i);
+}
+
+bool is_valid_variable_name(std::string_view s) {
     if (s.empty()) return false;
-    std::size_t i = 0;
-    if (s[0] == '-' || s[0] == '+') ++i;
-    bool digit = false;
-    for (; i < s.size(); ++i) {
-        if (s[i] == '.') continue;
-        if (s[i] < '0' || s[i] > '9') return false;
-        digit = true;
+    auto first = [](char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_' || c == '$';
+    };
+    if (!first(s[0])) return false;
+    for (char c : s.substr(1)) {
+        if (!first(c) && !(c >= '0' && c <= '9')) return false;
     }
-    return digit;
+    return true;
 }
 
-std::string_view first_ident(std::string_view s) {
-    s = trim_sv(s);
-    std::size_t i = 0;
-    if (i < s.size() && (std::isalpha(static_cast<unsigned char>(s[i])) || s[i] == '_')) {
-        ++i;
-        while (i < s.size() &&
-               (std::isalnum(static_cast<unsigned char>(s[i])) || s[i] == '_')) {
-            ++i;
+bool is_bitsy_whitespace(char c) { return c == ' ' || c == '\t' || c == '\n'; }
+
+// ===========================================================================
+// Parser (script.js: Parser)
+// ===========================================================================
+
+class ParserState {
+public:
+    explicit ParserState(std::string src) : src_(std::move(src)) {}
+
+    [[nodiscard]] bool done() const { return i_ >= src_.size(); }
+    [[nodiscard]] char ch() const { return done() ? '\0' : src_[i_]; }
+    void step(std::size_t n = 1) { i_ += n; }
+    [[nodiscard]] const std::string& source() const { return src_; }
+
+    [[nodiscard]] bool match_ahead(std::string_view s) const {
+        for (std::size_t j = 0; j < s.size(); ++j) {
+            if (i_ + j >= src_.size() || s[j] != src_[i_ + j]) return false;
+        }
+        return true;
+    }
+
+    [[nodiscard]] std::string peak(std::string_view end_chars) const {
+        std::size_t j = i_;
+        while (j < src_.size() && end_chars.find(src_[j]) == std::string_view::npos) ++j;
+        return src_.substr(i_, j - i_);
+    }
+
+    std::string consume_block(std::string_view open, std::string_view close,
+                              bool include_symbols = false) {
+        const std::size_t start = i_;
+        int count = 0;
+        if (match_ahead(open)) {
+            ++count;
+            step(open.size());
+        }
+        while (count > 0 && !done()) {
+            if (match_ahead(close)) {
+                --count;
+                step(close.size());
+            } else if (match_ahead(open)) {
+                ++count;
+                step(open.size());
+            } else {
+                step();
+            }
+        }
+        const long end = static_cast<long>(std::min(i_, src_.size()));
+        if (include_symbols) return js_slice(src_, static_cast<long>(start), end);
+        return js_slice(src_, static_cast<long>(start + open.size()),
+                        end - static_cast<long>(close.size()));
+    }
+
+private:
+    std::string src_;
+    std::size_t i_ = 0;
+};
+
+class Parser {
+public:
+    explicit Parser(std::function<double()> random) : random_(std::move(random)) {}
+
+    std::unique_ptr<Node> parse(std::string_view script) {
+        ParserState state{std::string(script)};
+        if (state.match_ahead("\"\"\"")) {
+            std::string inner = state.consume_block("\"\"\"\n", "\n\"\"\"");
+            return parse_dialog(std::move(inner));
+        }
+        return parse_dialog(std::string(script));
+    }
+
+private:
+    std::function<double()> random_;
+
+    // ParseDialog: text becomes {say} nodes; a {br} goes between two dialog
+    // lines (lines with text, empty lines, and lines with a list block).
+    std::unique_ptr<Node> parse_dialog(std::string src) {
+        auto root = make(NodeType::DialogBlock);
+        ParserState state{std::move(src)};
+
+        std::vector<std::unique_ptr<Node>> line_nodes;
+        std::string text;
+        bool line_empty = true;
+        bool line_has_text = false;
+        bool prev_line_is_dialog = false;
+
+        auto line_is_dialog = [&] { return line_has_text || line_empty; };
+        auto flush_text = [&] {
+            if (!text.empty()) {
+                auto say = make(NodeType::Function);
+                say->name = "say";
+                say->args.push_back(literal(DialogValue::from_string(text)));
+                line_nodes.push_back(std::move(say));
+                text.clear();
+                line_empty = false;
+                line_has_text = true;
+            }
+        };
+        auto add_code = [&] {
+            auto code = parse_code(state.consume_block("{", "}"));
+            line_empty = false;
+            if (is_list_block(*code)) line_has_text = true;
+            line_nodes.push_back(std::move(code));
+        };
+        auto add_linebreak = [&] {
+            if (prev_line_is_dialog) {
+                auto br = make(NodeType::Function);
+                br->name = "br";
+                line_nodes.insert(line_nodes.begin(), std::move(br));
+            }
+        };
+        auto flush_line = [&] {
+            for (auto& n : line_nodes) root->children.push_back(std::move(n));
+            line_nodes.clear();
+        };
+        auto reset_line = [&] {
+            prev_line_is_dialog = line_is_dialog();
+            line_has_text = false;
+            line_empty = true;
+            text.clear();
+        };
+
+        while (!state.done()) {
+            if (state.match_ahead("{")) {
+                flush_text();
+                add_code();
+            } else if (state.match_ahead("\n")) {
+                flush_text();
+                add_linebreak();
+                flush_line();
+                reset_line();
+                state.step();
+            } else {
+                text.push_back(state.ch());
+                state.step();
+            }
+        }
+        flush_text();
+        add_linebreak();
+        flush_line();
+        return root;
+    }
+
+    static bool is_list_block(const Node& code) {
+        if (code.type != NodeType::CodeBlock || code.children.empty()) return false;
+        const auto t = code.children[0]->type;
+        return t == NodeType::Sequence || t == NodeType::Cycle ||
+               t == NodeType::Shuffle || t == NodeType::If;
+    }
+
+    std::unique_ptr<Node> parse_code(std::string src) {
+        auto root = make(NodeType::CodeBlock);
+        ParserState state{std::move(src)};
+        if (is_conditional_block(state)) {
+            parse_conditional(state, *root);
+        } else if (const auto fn = state.peak(" "); has_function(fn)) {
+            state.step(fn.size());
+            parse_function(state, *root, fn);
+        } else if (const auto seq = state.peak(" \n"); is_sequence(seq)) {
+            state.step(seq.size());
+            parse_sequence(state, *root, seq);
+        } else if (is_literal(state.source()) || is_expression(state.source())) {
+            root->children.push_back(create_expression(state.source()));
+        } else {
+            auto undefined = make(NodeType::Undefined);
+            undefined->name = state.source();
+            root->children.push_back(std::move(undefined));
+        }
+        return root;
+    }
+
+    static bool is_conditional_block(const ParserState& state) {
+        const std::string to_list = state.peak("-");
+        // Bitsy compares this string with a number, so it only holds when the
+        // text before the first "-" is whitespace (JS turns that into 0).
+        const double as_number = js_string_to_number(to_list);
+        const bool found_list = !std::isnan(as_number) &&
+                                as_number < static_cast<double>(state.source().size());
+        const bool all_ws = std::all_of(to_list.begin(), to_list.end(), is_bitsy_whitespace);
+        const std::string to_cond = state.peak("?").substr(
+            std::min(to_list.size(), state.peak("?").size()));
+        const bool no_break = to_cond.find('\n') == std::string::npos;
+        return found_list && all_ws && no_break;
+    }
+
+    struct ListLine {
+        std::string text;
+        int whitespace = 0;
+        bool is_new = false;
+    };
+
+    // parseSequenceItemLine / parseConditionalItemLine.
+    static ListLine read_list_line(ParserState& state, bool conditional) {
+        ListLine line;
+        bool seen_text = false;
+        bool seen_cond_end = false;
+        while (!state.done() && state.ch() != '\n') {
+            if (!seen_text) {
+                if (state.ch() == ' ' || state.ch() == '\t') {
+                    ++line.whitespace;
+                } else {
+                    seen_text = true;
+                    if (state.ch() == '-') {
+                        line.is_new = true;
+                        line.whitespace += 2;
+                    }
+                }
+            }
+            if (conditional && line.is_new && !seen_cond_end && state.ch() == '?') {
+                seen_cond_end = true;
+            }
+            if (state.ch() == '{') {
+                line.text += state.consume_block("{", "}", true);
+            } else {
+                if (!seen_cond_end) line.text.push_back(state.ch());
+                state.step();
+            }
+        }
+        if (state.ch() == '\n') state.step();
+        return line;
+    }
+
+    void parse_conditional(ParserState& state, Node& root) {
+        std::vector<std::string> conds;
+        std::vector<std::string> results;
+        int required = -1;
+        while (!state.done()) {
+            const ListLine line = read_list_line(state, true);
+            if (line.is_new) {
+                required = line.whitespace;
+                conds.emplace_back();
+                results.emplace_back();
+            }
+            if (line.whitespace >= required && !conds.empty()) {
+                const std::string trimmed = slice_units(line.text, required);
+                if (line.is_new) conds.back() += trimmed;
+                else results.back() += trimmed + "\n";
+            }
+        }
+        for (auto& r : results) drop_last(r);
+
+        auto node = make(NodeType::If);
+        for (std::size_t i = 0; i < conds.size(); ++i) {
+            const std::string c = js_trim(conds[i]);
+            node->conditions.push_back(c == "else" ? make(NodeType::Else) : create_expression(c));
+            node->children.push_back(parse_dialog(results[i]));
+        }
+        root.children.push_back(std::move(node));
+    }
+
+    void parse_sequence(ParserState& state, Node& root, std::string_view kind) {
+        std::vector<std::string> items;
+        int required = -1;
+        while (!state.done()) {
+            const ListLine line = read_list_line(state, false);
+            if (line.is_new) {
+                required = line.whitespace;
+                items.emplace_back();
+            }
+            if (line.whitespace >= required && !items.empty()) {
+                items.back() += slice_units(line.text, required) + "\n";
+            }
+        }
+        for (auto& it : items) drop_last(it);
+
+        auto node = make(kind == "sequence" ? NodeType::Sequence
+                         : kind == "cycle"  ? NodeType::Cycle
+                                            : NodeType::Shuffle);
+        for (auto& it : items) node->children.push_back(parse_dialog(it));
+        if (node->type == NodeType::Shuffle) reshuffle(*node, random_);
+        root.children.push_back(std::move(node));
+    }
+
+    void parse_function(ParserState& state, Node& root, const std::string& name) {
+        auto fn = make(NodeType::Function);
+        fn->name = name;
+        std::string symbol;
+        auto end_symbol = [&] {
+            fn->args.push_back(string_to_value(js_trim(symbol)));
+            symbol.clear();
+        };
+        while (!(state.ch() == '\n' || state.done())) {
+            if (state.match_ahead("{")) {
+                fn->args.push_back(parse_code(state.consume_block("{", "}")));
+                symbol.clear();
+            } else if (state.match_ahead("\"")) {
+                fn->args.push_back(literal(DialogValue::from_string(state.consume_block("\"", "\""))));
+                symbol.clear();
+            } else if (state.ch() == ' ' && !symbol.empty()) {
+                end_symbol();
+            } else {
+                symbol.push_back(state.ch());
+            }
+            state.step();
+        }
+        if (!symbol.empty()) end_symbol();
+        root.children.push_back(std::move(fn));
+    }
+
+    std::unique_ptr<Node> string_to_value(const std::string& s) {
+        if (!s.empty() && s[0] == '{') {
+            ParserState tmp{s};
+            return parse_code(tmp.consume_block("{", "}"));
+        }
+        if (!s.empty() && s[0] == '"') {
+            std::string str;
+            for (std::size_t i = 1; i < s.size() && s[i] != '"'; ++i) str.push_back(s[i]);
+            return literal(DialogValue::from_string(std::move(str)));
+        }
+        if (s == "true") return literal(DialogValue::from_bool(true));
+        if (s == "false") return literal(DialogValue::from_bool(false));
+        if (const double n = js_parse_float(s); !std::isnan(n)) {
+            return literal(DialogValue::from_number(n));
+        }
+        if (is_valid_variable_name(s)) {
+            auto v = make(NodeType::Variable);
+            v->name = s;
+            return v;
+        }
+        return literal(DialogValue::null());
+    }
+
+    std::unique_ptr<Node> create_expression(std::string_view raw) {
+        const std::string exp = js_trim(raw);
+
+        auto inside_string = [&](std::size_t index) {
+            bool in = false;
+            for (std::size_t i = 0; i < exp.size(); ++i) {
+                if (exp[i] == '"') in = !in;
+                if (i == index) return in;
+            }
+            return false;
+        };
+        auto inside_code = [&](std::size_t index) {
+            int count = 0;
+            for (std::size_t i = 0; i < exp.size(); ++i) {
+                if (exp[i] == '{') ++count;
+                else if (exp[i] == '}') --count;
+                if (i == index) return count > 0;
+            }
+            return false;
+        };
+
+        if (const auto set = exp.find('='); set != std::string::npos &&
+                                            !inside_string(set) && !inside_code(set)) {
+            const char after = set + 1 < exp.size() ? exp[set + 1] : '\0';
+            const char before = set > 0 ? exp[set - 1] : '\0';
+            if (after != '=' && before != '>' && before != '<') {
+                auto node = make(NodeType::Operator);
+                node->name = "=";
+                const std::string var = js_trim(exp.substr(0, set));
+                if (is_valid_variable_name(var)) {
+                    node->left = make(NodeType::Variable);
+                    node->left->name = var;
+                } else {
+                    node->left = literal(DialogValue::null());
+                }
+                node->right = create_expression(exp.substr(set + 1));
+                return node;
+            }
+        }
+
+        if (const auto q = exp.find('?'); q != std::string::npos &&
+                                          !inside_string(q) && !inside_code(q)) {
+            auto node = make(NodeType::If);
+            node->conditions.push_back(create_expression(js_trim(exp.substr(0, q))));
+            std::string result = exp.substr(q + 1);
+            if (const auto colon = result.find(':'); colon != std::string::npos) {
+                node->conditions.push_back(make(NodeType::Else));
+                const std::string else_str = result.substr(colon + 1);
+                result = result.substr(0, colon);
+                node->children.push_back(parse_dialog(js_trim(result)));
+                node->children.push_back(parse_dialog(js_trim(else_str)));
+            } else {
+                node->children.push_back(parse_dialog(js_trim(result)));
+            }
+            return node;
+        }
+
+        // Bitsy splits on the first operator found, in this order.
+        for (const char* op : {"==", ">=", "<=", ">", "<", "-", "+", "/", "*"}) {
+            const auto at = exp.find(op);
+            if (at != std::string::npos && !inside_string(at) && !inside_code(at)) {
+                auto node = make(NodeType::Operator);
+                node->name = op;
+                node->left = create_expression(exp.substr(0, at));
+                node->right = create_expression(exp.substr(at + std::string_view(op).size()));
+                return node;
+            }
+        }
+
+        return string_to_value(exp);
+    }
+
+    static bool is_expression(const std::string& s) {
+        ParserState tmp{s};
+        std::string outside;
+        while (!tmp.done()) {
+            if (tmp.match_ahead("{")) {
+                (void)tmp.consume_block("{", "}");
+            } else {
+                outside.push_back(tmp.ch());
+                tmp.step();
+            }
+        }
+        for (const char* op : {"?", "=", "==", ">=", "<=", ">", "<", "-", "+", "/", "*"}) {
+            if (outside.find(op) != std::string::npos) return true;
+        }
+        return false;
+    }
+
+    static bool is_literal(const std::string& s) {
+        const bool is_bool = s == "true" || s == "false";
+        const bool is_num = !std::isnan(js_parse_float(s));
+        const bool is_str = !s.empty() && s.front() == '"' && s.back() == '"';
+        return is_bool || is_num || is_str || is_valid_variable_name(s) || s.empty();
+    }
+
+public:
+    static void reshuffle(Node& node, const std::function<double()>& random) {
+        std::vector<std::size_t> pool(node.children.size());
+        for (std::size_t i = 0; i < pool.size(); ++i) pool[i] = i;
+        node.shuffled.clear();
+        while (!pool.empty()) {
+            const auto i = static_cast<std::size_t>(
+                std::floor(random() * static_cast<double>(pool.size())));
+            node.shuffled.push_back(pool[std::min(i, pool.size() - 1)]);
+            pool.erase(pool.begin() + static_cast<long>(std::min(i, pool.size() - 1)));
         }
     }
-    return s.substr(0, i);
-}
-
-// Find matching '}' from an opening '{' at @p open (the '{' itself).
-std::size_t matching_brace(std::string_view s, std::size_t open) {
-    int depth = 0;
-    bool in_str = false;
-    for (std::size_t i = open; i < s.size(); ++i) {
-        if (s[i] == '"' && (i == 0 || s[i - 1] != '\\')) in_str = !in_str;
-        if (in_str) continue;
-        if (s[i] == '{') ++depth;
-        else if (s[i] == '}') {
-            --depth;
-            if (depth == 0) return i;
-        }
-    }
-    return std::string_view::npos;
-}
-
-int brace_delta(std::string_view s) {
-    int d = 0;
-    bool in_str = false;
-    for (std::size_t i = 0; i < s.size(); ++i) {
-        if (s[i] == '"' && (i == 0 || s[i - 1] != '\\')) in_str = !in_str;
-        if (in_str) continue;
-        if (s[i] == '{') ++d;
-        else if (s[i] == '}') --d;
-    }
-    return d;
-}
+};
 
 } // namespace
+} // namespace script
+
+using script::Node;
+using script::NodeType;
+
+// ===========================================================================
+// DialogVM
+// ===========================================================================
+
+DialogVM::DialogVM() = default;
+DialogVM::~DialogVM() = default;
+DialogVM::DialogVM(DialogVM&&) noexcept = default;
+DialogVM& DialogVM::operator=(DialogVM&&) noexcept = default;
+
+double DialogVM::random() {
+    // mulberry32, the generator tests/parity/bitsy_reference.mjs gives Bitsy.
+    rng_state_ += 0x6D2B79F5u;
+    std::uint32_t t = rng_state_;
+    t = (t ^ (t >> 15)) * (t | 1u);
+    t ^= t + (t ^ (t >> 7)) * (t | 61u);
+    return static_cast<double>(t ^ (t >> 14)) / 4294967296.0;
+}
 
 void DialogVM::reset() {
-    source_.clear();
-    dialog_id_.clear();
-    pos_ = 0;
+    compiled_.clear();
+    anonymous_.reset();
+    stack_.clear();
+    pages_.clear();
+    page_ = 0;
+    paused_ = false;
     active_ = false;
-    page_ready_ = false;
-    list_serial_ = 0;
-    spans_.clear();
-    fx_bits_ = GlyphFx::None;
-    color_stack_.clear();
-    pending_.clear();
-    on_end = {};
+    effects_.clear();
+    last_was_break_ = false;
+    on_end_ = {};
     world_ = {};
 }
 
-void DialogVM::start(std::string source, DialogWorld world,
-                     std::string dialog_id, std::function<void()> on_end_cb) {
-    reset();
-    source_ = std::move(source);
-    dialog_id_ = std::move(dialog_id);
+const std::vector<TextSpan>& DialogVM::spans() const {
+    static const std::vector<TextSpan> kEmpty;
+    return pages_.empty() ? kEmpty : pages_[page_];
+}
+
+void DialogVM::start(std::string_view source, DialogWorld world,
+                     std::string script_id, std::function<void()> on_end) {
+    stack_.clear();
+    pages_.clear();
+    page_ = 0;
+    paused_ = false;
+    active_ = false;
+    effects_.clear();
+    last_was_break_ = false;
     world_ = std::move(world);
-    on_end = std::move(on_end_cb);
-    active_ = true;
-    run_until_pause();
-    if (!page_ready_ && spans_.empty()) {
-        // No text — still fire on_end (empty dialog).
-        active_ = false;
-        auto cb = std::move(on_end);
-        on_end = {};
-        if (cb) cb();
+    on_end_ = std::move(on_end);
+
+    if (source.empty()) {
+        finish();
+        return;
+    }
+
+    auto rnd = [this] { return random(); };
+    Node* root = nullptr;
+    if (!script_id.empty()) {
+        auto& slot = compiled_[script_id];
+        if (!slot) slot = script::Parser(rnd).parse(source);
+        root = slot.get();
+    } else {
+        anonymous_ = script::Parser(rnd).parse(source);
+        root = anonymous_.get();
+    }
+
+    stack_.push_back({root});
+    run();
+    if (pages_.empty() && !paused_) {
+        finish();
+    } else {
+        active_ = true;
     }
 }
 
 bool DialogVM::continue_page() {
     if (!active_) return false;
-    spans_.clear();
-    page_ready_ = false;
-    run_until_pause();
-    if (!page_ready_ && spans_.empty()) {
-        active_ = false;
-        auto cb = std::move(on_end);
-        on_end = {};
-        if (cb) cb();
-        return false;
+    if (page_ + 1 < pages_.size()) {
+        ++page_;
+        return true;
     }
-    return true;
-}
-
-void DialogVM::new_page() {
-    page_ready_ = true;
-}
-
-void DialogVM::emit_text(std::string_view text) {
-    if (text.empty()) return;
-    TextSpan sp;
-    sp.text = std::string(text);
-    sp.effects = current_fx();
-    sp.color = current_color();
-    spans_.push_back(std::move(sp));
-}
-
-void DialogVM::emit_drawing(const TileFrame& frame, std::uint8_t color) {
-    TextSpan sp;
-    sp.is_drawing = true;
-    sp.drawing = frame;
-    sp.drawing_color = color;
-    spans_.push_back(std::move(sp));
-}
-
-void DialogVM::run_until_pause() {
-    if (!pending_.empty()) {
-        std::string rest = std::move(pending_);
-        exec_chunk(rest, false);
-        if (page_ready_) return;
+    if (paused_) {
+        paused_ = false;
+        pages_.clear();
+        page_ = 0;
+        last_was_break_ = false;
+        run();
+        if (!pages_.empty() || paused_) return true;
     }
+    finish();
+    return false;
+}
 
-    const std::size_t n = source_.size();
-    bool last_was_string = false;
+void DialogVM::finish() {
+    active_ = false;
+    stack_.clear();
+    pages_.clear();
+    page_ = 0;
+    paused_ = false;
+    auto cb = std::move(on_end_);
+    on_end_ = {};
+    if (cb) cb();
+}
 
-    auto skip_ws = [&] {
-        while (pos_ < n && (source_[pos_] == ' ' || source_[pos_] == '\t' ||
-                            source_[pos_] == '\n' || source_[pos_] == '\r')) {
-            ++pos_;
-        }
-    };
-
-    while (pos_ < n && !page_ready_) {
-        skip_ws();
-        if (pos_ >= n) break;
-
-        // Triple-quoted block.
-        if (pos_ + 2 < n && source_[pos_] == '"' && source_[pos_ + 1] == '"' &&
-            source_[pos_ + 2] == '"') {
-            if (last_was_string && !spans_.empty()) {
-                new_page();
-                break;
-            }
-            pos_ += 3;
-            if (pos_ < n && (source_[pos_] == '\n' || source_[pos_] == '\r')) {
-                if (source_[pos_] == '\r' && pos_ + 1 < n && source_[pos_ + 1] == '\n')
-                    pos_ += 2;
-                else ++pos_;
-            }
-            const std::size_t start = pos_;
-            while (pos_ + 2 < n &&
-                   !(source_[pos_] == '"' && source_[pos_ + 1] == '"' &&
-                     source_[pos_ + 2] == '"')) {
-                ++pos_;
-            }
-            auto body = std::string_view(source_).substr(start, pos_ - start);
-            if (!body.empty() && (body.back() == '\n' || body.back() == '\r')) {
-                body.remove_suffix(1);
-                if (!body.empty() && body.back() == '\r') body.remove_suffix(1);
-            }
-            exec_chunk(body, false);
-            if (pos_ + 2 < n) pos_ += 3;
-            else pos_ = n;
-            last_was_string = true;
-            if (page_ready_) break;
+void DialogVM::run() {
+    while (!stack_.empty() && !paused_) {
+        Frame& f = stack_.back();
+        if (f.next >= f.block->children.size()) {
+            stack_.pop_back();
             continue;
         }
-
-        if (source_[pos_] == '"') {
-            if (last_was_string && !spans_.empty()) {
-                new_page();
-                break;
-            }
-            ++pos_;
-            const std::size_t start = pos_;
-            int depth = 0;
-            while (pos_ < n) {
-                if (source_[pos_] == '{' ) ++depth;
-                else if (source_[pos_] == '}' && depth > 0) --depth;
-                else if (source_[pos_] == '"' && depth == 0) break;
-                ++pos_;
-            }
-            auto body = std::string_view(source_).substr(start, pos_ - start);
-            if (pos_ < n) ++pos_;
-            exec_chunk(body, false);
-            last_was_string = true;
-            if (page_ready_) break;
-            continue;
-        }
-
-        if (source_[pos_] == '{') {
-            const auto end = matching_brace(source_, pos_);
-            if (end == std::string_view::npos) {
-                ++pos_;
-                continue;
-            }
-            auto inner = trim_sv(std::string_view(source_).substr(pos_ + 1, end - pos_ - 1));
-            pos_ = end + 1;
-            last_was_string = false;
-            auto ident = first_ident(inner);
-            const bool is_list =
-                ident == "sequence" || ident == "cycle" || ident == "shuffle" ||
-                inner.find('\n') != std::string_view::npos ||
-                (!inner.empty() && inner[0] == '-');
-            if (is_list) {
-                exec_block(inner);
-            } else {
-                exec_tag(inner);
-            }
-            continue;
-        }
-
-        // Unquoted run (endings, title).
-        const std::size_t start = pos_;
-        while (pos_ < n && source_[pos_] != '"' && source_[pos_] != '{') ++pos_;
-        auto run = trim_sv(std::string_view(source_).substr(start, pos_ - start));
-        if (!run.empty()) {
-            if (last_was_string && !spans_.empty()) {
-                pos_ = start;
-                new_page();
-                break;
-            }
-            exec_chunk(run, false);
-            last_was_string = true;
-        }
+        Node& child = *f.block->children[f.next++];
+        exec_statement(child);
     }
 }
 
-void DialogVM::exec_chunk(std::string_view chunk, bool /*implicit_page*/) {
-    std::size_t i = 0;
-    while (i < chunk.size() && !page_ready_) {
-        if (chunk[i] == '"') {
-            ++i;
-            const std::size_t start = i;
-            while (i < chunk.size() && chunk[i] != '"') ++i;
-            auto body = chunk.substr(start, i - start);
-            if (i < chunk.size()) ++i;
-            exec_chunk(body, false);
-            continue;
-        }
-        if (chunk[i] == '{') {
-            const auto end = matching_brace(chunk, i);
-            if (end == std::string_view::npos) {
-                emit_text(chunk.substr(i, 1));
-                ++i;
-                continue;
+Node* DialogVM::choose(Node& list) {
+    if (list.children.empty()) return nullptr;
+    Node* chosen = nullptr;
+    switch (list.type) {
+        case NodeType::Sequence:
+            chosen = list.children[list.index].get();
+            if (list.index + 1 < list.children.size()) ++list.index;
+            break;
+        case NodeType::Cycle:
+            chosen = list.children[list.index].get();
+            list.index = list.index + 1 < list.children.size() ? list.index + 1 : 0;
+            break;
+        case NodeType::Shuffle:
+            chosen = list.children[list.shuffled[list.index]].get();
+            if (++list.index >= list.children.size()) {
+                script::Parser::reshuffle(list, [this] { return random(); });
+                list.index = 0;
             }
-            auto inner = trim_sv(chunk.substr(i + 1, end - i - 1));
-            i = end + 1;
-            if (inner.find('\n') != std::string_view::npos ||
-                (!inner.empty() && inner[0] == '-')) {
-                exec_block(inner);
-            } else {
-                const bool paused = exec_tag(inner);
-                (void)paused;
-                if (inner == "p" || inner == "pg") {
-                    pending_ = std::string(chunk.substr(i));
+            break;
+        default:
+            break;
+    }
+    return chosen;
+}
+
+void DialogVM::exec_statement(Node& node) {
+    switch (node.type) {
+        case NodeType::DialogBlock:
+        case NodeType::CodeBlock:
+            stack_.push_back({&node});
+            return;
+        case NodeType::Sequence:
+        case NodeType::Cycle:
+        case NodeType::Shuffle:
+            if (Node* chosen = choose(node)) stack_.push_back({chosen});
+            return;
+        case NodeType::If:
+            for (std::size_t i = 0; i < node.conditions.size(); ++i) {
+                const bool pass = node.conditions[i]->type == NodeType::Else ||
+                                  eval(*node.conditions[i]).is_truthy();
+                if (pass) {
+                    if (i < node.children.size()) stack_.push_back({node.children[i].get()});
                     return;
                 }
             }
-            continue;
-        }
-        if (chunk[i] == '\n' || chunk[i] == '\r') {
-            if (chunk[i] == '\r' && i + 1 < chunk.size() && chunk[i + 1] == '\n')
-                i += 2;
-            else
-                ++i;
-            std::size_t j = i;
-            while (j < chunk.size() && (chunk[j] == ' ' || chunk[j] == '\t')) ++j;
-            if (j < chunk.size() && (chunk[j] == '\n' || chunk[j] == '\r') &&
-                !spans_.empty()) {
-                auto rest = chunk.substr(j);
-                while (!rest.empty() &&
-                       (rest.front() == '\n' || rest.front() == '\r' ||
-                        rest.front() == ' ' || rest.front() == '\t')) {
-                    rest.remove_prefix(1);
-                }
-                pending_ = std::string(rest);
-                new_page();
+            return;
+        case NodeType::Function:
+            if (node.name == "pg") {
+                add_pagebreak();
+                paused_ = true;
                 return;
             }
-            i = j;
-            if (i < chunk.size() && !spans_.empty()) emit_text("\n");
-            continue;
-        }
-        const std::size_t start = i;
-        while (i < chunk.size() && chunk[i] != '{' && chunk[i] != '"' &&
-               chunk[i] != '\n' && chunk[i] != '\r') {
-            ++i;
-        }
-        emit_text(chunk.substr(start, i - start));
+            (void)eval(node);
+            return;
+        default:
+            (void)eval(node);
+            return;
     }
 }
 
-bool DialogVM::exec_tag(std::string_view tag) {
-    tag = trim_sv(tag);
-    if (tag.empty()) return false;
-
-    // Close-effect tags clear only that bit so other effects stay on.
-    if (tag == "/wvy") { fx_bits_ = static_cast<std::uint8_t>(fx_bits_ & ~GlyphFx::Wavy); return true; }
-    if (tag == "/shk") { fx_bits_ = static_cast<std::uint8_t>(fx_bits_ & ~GlyphFx::Shaky); return true; }
-    if (tag == "/rbw") { fx_bits_ = static_cast<std::uint8_t>(fx_bits_ & ~GlyphFx::Rainbow); return true; }
-    if (tag == "/clr" || tag == "/clr1" || tag == "/clr2" || tag == "/clr3") {
-        if (!color_stack_.empty()) color_stack_.pop_back();
-        return true;
-    }
-
-    if (tag == "br") {
-        emit_text("\n");
-        return true;
-    }
-    if (tag == "p" || tag == "pg") {
-        new_page();
-        return true;
-    }
-
-    auto toggle_fx = [&](std::uint8_t bit) { fx_bits_ ^= bit; };
-    auto toggle_color = [&](int c) {
-        auto it = std::find(color_stack_.rbegin(), color_stack_.rend(), c);
-        if (it != color_stack_.rend()) {
-            color_stack_.erase(std::next(it).base());
-        } else {
-            color_stack_.push_back(c);
-        }
-    };
-
-    if (tag == "wvy") { toggle_fx(GlyphFx::Wavy); return true; }
-    if (tag == "shk") { toggle_fx(GlyphFx::Shaky); return true; }
-    if (tag == "rbw") { toggle_fx(GlyphFx::Rainbow); return true; }
-    if (tag == "clr" || tag == "clr1") { toggle_color(1); return true; }
-    if (tag == "clr2") { toggle_color(2); return true; }
-    if (tag == "clr3") { toggle_color(3); return true; }
-    if (tag == "end") {
-        if (world_.do_end) world_.do_end();
-        return true;
-    }
-    if (tag == "lock") {
-        if (world_.do_lock) world_.do_lock();
-        return true;
-    }
-
-    // Assignment: `{name = expr}` — left side must be a single identifier.
-    const auto eq = tag.find('=');
-    if (eq != std::string_view::npos && eq > 0 &&
-        tag.find("==") == std::string_view::npos &&
-        tag.find("!=") == std::string_view::npos &&
-        tag.find("<=") == std::string_view::npos &&
-        tag.find(">=") == std::string_view::npos) {
-        bool is_cmp = false;
-        if (eq + 1 < tag.size() && tag[eq + 1] == '=') is_cmp = true;
-        if (eq > 0 && (tag[eq - 1] == '<' || tag[eq - 1] == '>' || tag[eq - 1] == '!'))
-            is_cmp = true;
-        auto name = trim_sv(tag.substr(0, eq));
-        if (!is_cmp && first_ident(name).size() == name.size()) {
-            auto expr = trim_sv(tag.substr(eq + 1));
-            auto val = eval_expr(expr);
-            if (world_.set_var) world_.set_var(name, val);
-            return true;
-        }
-    }
-
-    auto ident = first_ident(tag);
-    auto rest = trim_sv(tag.substr(ident.size()));
-    auto args = split_args(rest);
-
-    if (ident == "clr" && !args.empty()) {
-        int idx = 2;
-        try { idx = std::stoi(unquote(args[0])); } catch (...) {}
-        color_stack_.push_back(idx);
-        return true;
-    }
-
-    auto result = call_func(ident, args, /*as_statement=*/true);
-    // Functions that produce a printable value (print / item / bare var).
-    if (ident == "print" || ident == "say") {
-        emit_text(result.as_string());
-        return true;
-    }
-    if (ident.empty()) return false;
-
-    // Bare variable / unknown tag: print its value (empty if unset).
-    if (ident != "item" && ident != "exit" && ident != "ava" && ident != "pal" &&
-        ident != "tune" && ident != "blip" && ident != "printSprite" &&
-        ident != "printTile" && ident != "printItem" && ident != "end" &&
-        ident != "lock" && ident != "property" && ident != "drwt" &&
-        ident != "drws" && ident != "drwi") {
-        // Could be `{name}` — print variable.
-        if (args.empty()) {
-            emit_text(result.as_string());
-        }
-    } else if (ident == "item" && args.size() <= 1) {
-        // `{item id}` in text: print count.
-        emit_text(result.as_string());
-    }
-    return true;
+DialogValue DialogVM::eval_block(Node& node) {
+    DialogValue last;
+    for (auto& child : node.children) last = eval(*child);
+    return last;
 }
 
-void DialogVM::exec_block(std::string_view inner) {
-    inner = trim_sv(inner);
-
-    enum class Mode { Sequence, Cycle, Shuffle, Conditional };
-    Mode mode = Mode::Sequence;
-    std::string_view body = inner;
-    bool named_list = false;
-
-    auto ident = first_ident(inner);
-    if (ident == "sequence") {
-        mode = Mode::Sequence;
-        named_list = true;
-        body = trim_sv(inner.substr(ident.size()));
-    } else if (ident == "cycle") {
-        mode = Mode::Cycle;
-        named_list = true;
-        body = trim_sv(inner.substr(ident.size()));
-    } else if (ident == "shuffle") {
-        mode = Mode::Shuffle;
-        named_list = true;
-        body = trim_sv(inner.substr(ident.size()));
-    }
-
-    struct Item {
-        std::string condition;  // empty = always
-        bool is_else = false;
-        std::string body;
-    };
-    std::vector<Item> items;
-    bool any_cond = false;
-
-    // Split on lines starting with '-' (list items) or treat as a code block.
-    std::string body_str(body);
-    std::istringstream iss(body_str);
-    std::string line;
-    Item cur;
-    bool in_item = false;
-    int nest = 0;
-    auto flush = [&] {
-        if (in_item) {
-            cur.body = std::string(trim_sv(cur.body));
-            items.push_back(std::move(cur));
-            cur = {};
-        }
-        in_item = false;
-        nest = 0;
-    };
-
-    while (std::getline(iss, line)) {
-        auto t = trim_sv(line);
-        if (nest == 0 && t.starts_with("-")) {
-            flush();
-            in_item = true;
-            auto rest = trim_sv(t.substr(1));
-            // `cond ?` is only for unnamed branch lists. Sequence / cycle /
-            // shuffle items are plain text, including English questions.
-            auto q = rest.find('?');
-            if (!named_list && first_ident(rest) == "else") {
-                cur.is_else = true;
-                any_cond = true;
-                auto after = trim_sv(rest.substr(4));
-                if (!after.empty() && after[0] == '?') after = trim_sv(after.substr(1));
-                cur.body = std::string(after) + "\n";
-            } else if (!named_list && q != std::string_view::npos) {
-                cur.condition = std::string(trim_sv(rest.substr(0, q)));
-                cur.body = std::string(trim_sv(rest.substr(q + 1))) + "\n";
-                any_cond = true;
-            } else {
-                cur.body = std::string(rest) + "\n";
+DialogValue DialogVM::eval(Node& node) {
+    switch (node.type) {
+        case NodeType::DialogBlock:
+        case NodeType::CodeBlock:
+            return eval_block(node);
+        case NodeType::Literal:
+            return node.value;
+        case NodeType::Variable:
+            if (world_.get_var) {
+                if (auto v = world_.get_var(node.name)) return *v;
             }
-            nest += brace_delta(rest);
-            if (nest < 0) nest = 0;
-        } else if (in_item) {
-            cur.body += line;
-            cur.body += '\n';
-            nest += brace_delta(line);
-            if (nest < 0) nest = 0;
-        } else if (!t.empty()) {
-            // Bare statements inside `{ a = 1 \n "hi" }`
-            exec_chunk(t, false);
+            return DialogValue::null();
+        case NodeType::Else:
+            return DialogValue::from_bool(true);
+        case NodeType::Undefined: {
+            toggle_effect("_debug_highlight");
+            add_text("{" + node.name + "}");
+            toggle_effect("_debug_highlight");
+            return DialogValue::null();
         }
-    }
-    flush();
-
-    if (items.empty()) return;
-
-    if (any_cond && !named_list) mode = Mode::Conditional;
-
-    int chosen = -1;
-    if (mode == Mode::Conditional) {
-        bool matched = false;
-        int else_i = -1;
-        for (int i = 0; i < static_cast<int>(items.size()); ++i) {
-            if (items[static_cast<std::size_t>(i)].is_else) {
-                else_i = i;
-                continue;
-            }
-            if (items[static_cast<std::size_t>(i)].condition.empty() ||
-                eval_expr(items[static_cast<std::size_t>(i)].condition).is_truthy()) {
-                chosen = i;
-                matched = true;
-                break;
-            }
-        }
-        if (!matched) chosen = else_i;
-    } else {
-        const std::string key = dialog_id_ + "#" + std::to_string(list_serial_++) +
-                                "#" + std::string(ident);
-        const int n = static_cast<int>(items.size());
-        if (mode == Mode::Cycle) {
-            int& cursor = list_cursors[key];
-            chosen = cursor % n;
-            ++cursor;
-        } else if (mode == Mode::Shuffle) {
-            auto& order = shuffle_orders[key];
-            if (order.empty()) {
-                order.resize(static_cast<std::size_t>(n));
-                std::iota(order.begin(), order.end(), 0);
-                // Bare-metal (STM32) has no TLS and no getentropy; keep a
-                // process-wide engine. The VM is single-threaded.
-                static std::mt19937 rng{0xC15A9u};
-                std::shuffle(order.begin(), order.end(), rng);
-            }
-            chosen = order.front();
-            order.erase(order.begin());
-        } else {  // sequence: first unused, then stay on last
-            int& cursor = list_cursors[key];
-            chosen = std::min(cursor, n - 1);
-            if (cursor < n) ++cursor;
-        }
-    }
-
-    if (chosen < 0 || chosen >= static_cast<int>(items.size())) return;
-    exec_chunk(items[static_cast<std::size_t>(chosen)].body, false);
-}
-
-DialogValue DialogVM::eval_expr(std::string_view expr) {
-    expr = trim_sv(expr);
-    if (expr.empty()) return DialogValue::from_number(0);
-
-    // Expand {tags} so `{has} == 1` works as a condition.
-    if (expr.find('{') != std::string_view::npos) {
-        std::string expanded;
-        for (std::size_t i = 0; i < expr.size();) {
-            if (expr[i] == '{') {
-                auto end = matching_brace(expr, i);
-                if (end == std::string_view::npos) {
-                    expanded.push_back(expr[i++]);
-                    continue;
+        case NodeType::Sequence:
+        case NodeType::Cycle:
+        case NodeType::Shuffle:
+            if (Node* chosen = choose(node)) return eval(*chosen);
+            return DialogValue::null();
+        case NodeType::If:
+            for (std::size_t i = 0; i < node.conditions.size(); ++i) {
+                if (eval(*node.conditions[i]).is_truthy()) {
+                    return i < node.children.size() ? eval(*node.children[i])
+                                                    : DialogValue::null();
                 }
-                auto inner = trim_sv(expr.substr(i + 1, end - i - 1));
-                expanded += eval_expr(inner).as_string();
-                i = end + 1;
-            } else {
-                expanded.push_back(expr[i++]);
             }
+            return DialogValue::null();
+        case NodeType::Operator: {
+            const std::string& op = node.name;
+            if (op == "=") {
+                if (node.left->type != NodeType::Variable) return DialogValue::null();
+                const DialogValue r = eval(*node.right);
+                if (world_.set_var) world_.set_var(node.left->name, r);
+                return eval(*node.left);
+            }
+            // Bitsy evaluates the right side first.
+            const DialogValue r = eval(*node.right);
+            const DialogValue l = eval(*node.left);
+            if (op == "==") return DialogValue::from_bool(l.strict_equals(r));
+            if (op == ">")  return DialogValue::from_bool(js_less(r, l));
+            if (op == "<")  return DialogValue::from_bool(js_less(l, r));
+            if (op == ">=") return DialogValue::from_bool(js_less_eq(r, l));
+            if (op == "<=") return DialogValue::from_bool(js_less_eq(l, r));
+            if (op == "*")  return js_mul(l, r);
+            if (op == "/")  return js_div(l, r);
+            if (op == "+")  return js_add(l, r);
+            if (op == "-")  return js_sub(l, r);
+            return DialogValue::null();
         }
-        if (expanded != expr) return eval_expr(expanded);
-    }
-
-    // Comparisons (lowest precedence among binary ops we care about).
-    auto cmp_at = [&](std::string_view op) -> std::size_t {
-        int depth = 0;
-        bool in_str = false;
-        for (std::size_t i = 0; i + op.size() <= expr.size(); ++i) {
-            if (expr[i] == '"') in_str = !in_str;
-            if (in_str) continue;
-            if (expr[i] == '(') ++depth;
-            else if (expr[i] == ')') --depth;
-            if (depth == 0 && expr.substr(i, op.size()) == op) return i;
+        case NodeType::Function: {
+            std::vector<DialogValue> values;
+            std::size_t i = 0;
+            if (node.name == "property" && !node.args.empty()) {
+                // The property name is a bare word; anything else drops every argument.
+                if (node.args[0]->type == NodeType::Variable) {
+                    values.push_back(DialogValue::from_string(node.args[0]->name));
+                    i = 1;
+                } else {
+                    i = node.args.size();
+                }
+            }
+            for (; i < node.args.size(); ++i) values.push_back(eval(*node.args[i]));
+            if (node.name == "pg") {
+                add_pagebreak();
+                return DialogValue::null();
+            }
+            return call(node.name, values);
         }
-        return std::string_view::npos;
-    };
-
-    auto do_cmp = [&](auto&& pred, std::string_view op) -> DialogValue {
-        auto at = cmp_at(op);
-        auto l = eval_expr(expr.substr(0, at));
-        auto r = eval_expr(expr.substr(at + op.size()));
-        return DialogValue::from_number(pred(l, r) ? 1 : 0);
-    };
-
-    if (cmp_at("==") != std::string_view::npos) {
-        return do_cmp([](const DialogValue& a, const DialogValue& b) {
-            if (a.kind == DialogValue::Kind::String || b.kind == DialogValue::Kind::String)
-                return a.as_string() == b.as_string();
-            return a.as_number() == b.as_number();
-        }, "==");
     }
-    if (cmp_at("!=") != std::string_view::npos) {
-        return do_cmp([](const DialogValue& a, const DialogValue& b) {
-            if (a.kind == DialogValue::Kind::String || b.kind == DialogValue::Kind::String)
-                return a.as_string() != b.as_string();
-            return a.as_number() != b.as_number();
-        }, "!=");
-    }
-    if (cmp_at(">=") != std::string_view::npos) {
-        return do_cmp([](const DialogValue& a, const DialogValue& b) {
-            return a.as_number() >= b.as_number();
-        }, ">=");
-    }
-    if (cmp_at("<=") != std::string_view::npos) {
-        return do_cmp([](const DialogValue& a, const DialogValue& b) {
-            return a.as_number() <= b.as_number();
-        }, "<=");
-    }
-    if (cmp_at(">") != std::string_view::npos) {
-        return do_cmp([](const DialogValue& a, const DialogValue& b) {
-            return a.as_number() > b.as_number();
-        }, ">");
-    }
-    if (cmp_at("<") != std::string_view::npos) {
-        return do_cmp([](const DialogValue& a, const DialogValue& b) {
-            return a.as_number() < b.as_number();
-        }, "<");
-    }
-
-    auto bin_at = [&](char op) -> std::size_t {
-        int depth = 0;
-        bool in_str = false;
-        for (std::size_t i = 0; i < expr.size(); ++i) {
-            if (expr[i] == '"') in_str = !in_str;
-            if (in_str) continue;
-            if (expr[i] == '(') ++depth;
-            else if (expr[i] == ')') --depth;
-            if (depth == 0 && expr[i] == op && i > 0) return i;
-        }
-        return std::string_view::npos;
-    };
-
-    if (auto at = bin_at('+'); at != std::string_view::npos) {
-        return DialogValue::from_number(
-            eval_expr(expr.substr(0, at)).as_number() +
-            eval_expr(expr.substr(at + 1)).as_number());
-    }
-    if (auto at = bin_at('-'); at != std::string_view::npos) {
-        return DialogValue::from_number(
-            eval_expr(expr.substr(0, at)).as_number() -
-            eval_expr(expr.substr(at + 1)).as_number());
-    }
-    if (auto at = bin_at('*'); at != std::string_view::npos) {
-        return DialogValue::from_number(
-            eval_expr(expr.substr(0, at)).as_number() *
-            eval_expr(expr.substr(at + 1)).as_number());
-    }
-    if (auto at = bin_at('/'); at != std::string_view::npos) {
-        double d = eval_expr(expr.substr(at + 1)).as_number();
-        return DialogValue::from_number(
-            d == 0 ? 0 : eval_expr(expr.substr(0, at)).as_number() / d);
-    }
-
-    if (expr.front() == '(' && expr.back() == ')') {
-        return eval_expr(expr.substr(1, expr.size() - 2));
-    }
-    if (expr.front() == '"') {
-        return DialogValue::from_string(unquote(expr));
-    }
-    if (looks_number(expr)) {
-        try { return DialogValue::from_number(std::stod(std::string(expr))); }
-        catch (...) { return DialogValue::from_number(0); }
-    }
-
-    auto ident = first_ident(expr);
-    auto rest = trim_sv(expr.substr(ident.size()));
-    if (ident == "true" && rest.empty()) return DialogValue::from_number(1);
-    if (ident == "false" && rest.empty()) return DialogValue::from_number(0);
-    auto args = split_args(rest);
-    return call_func(ident, args, /*as_statement=*/false);
+    return DialogValue::null();
 }
 
-DialogValue DialogVM::call_func(std::string_view name,
-                                const std::vector<std::string>& args,
-                                bool as_statement) {
-    auto id_of = [&](std::size_t i) -> std::string {
-        if (i >= args.size()) return {};
-        return unquote(args[i]);
+DialogValue DialogVM::call(const std::string& name, std::vector<DialogValue>& args) {
+    auto arg = [&](std::size_t i) -> const DialogValue* {
+        return i < args.size() ? &args[i] : nullptr;
+    };
+    auto resolve = [&](std::string_view kind, const DialogValue* v) {
+        // A missing argument is JS undefined, which becomes "undefined" as a key.
+        const std::string key = v ? v->as_string() : std::string("undefined");
+        return world_.resolve ? world_.resolve(kind, key) : key;
     };
 
-    if (name == "print" || name == "say") {
-        if (args.empty()) return DialogValue::from_string({});
-        std::string joined;
-        for (std::size_t i = 0; i < args.size(); ++i) {
-            if (i) joined += ' ';
-            joined += args[i];
+    if (name == "say" || name == "print") {
+        if (const DialogValue* v = arg(0); v && !v->is_null()) add_text(v->as_string());
+        return DialogValue::null();
+    }
+    if (name == "br") {
+        add_linebreak();
+        return DialogValue::null();
+    }
+    if (name == "drws" || name == "printSprite" || name == "drwt" || name == "printTile" ||
+        name == "drwi" || name == "printItem") {
+        const char kind = (name == "drws" || name == "printSprite") ? 's'
+                        : (name == "drwt" || name == "printTile")   ? 't'
+                                                                    : 'i';
+        const std::string_view kind_name = kind == 's' ? "sprite" : kind == 't' ? "tile" : "item";
+        const std::string id = resolve(kind_name, arg(0));
+        if (world_.drawing) {
+            if (const TileFrame* f = world_.drawing(kind, id)) add_drawing(*f);
         }
-        return eval_expr(joined);
+        return DialogValue::null();
     }
     if (name == "item") {
-        const std::string id = id_of(0);
-        if (args.size() >= 2) {
-            int val = static_cast<int>(eval_expr(args[1]).as_number());
-            if (val < 0) val = 0;
-            if (world_.set_item) world_.set_item(id, val);
-            return DialogValue::from_number(val);
+        const std::string id = resolve("item", arg(0));
+        double count = world_.item_count ? world_.item_count(id) : 0;
+        if (args.size() > 1) {
+            const DialogValue& v = args[1];
+            double n = v.kind == DialogValue::Kind::Number && std::isfinite(v.number)
+                ? std::trunc(v.number)
+                : js_parse_int(v.as_string());
+            if (std::isnan(n)) n = 0;  // Bitsy stores NaN, which then reads as 0
+            n = std::max(0.0, n);
+            if (world_.set_item) world_.set_item(id, n);
+            count = n;
         }
-        int count = world_.item_count ? world_.item_count(id) : 0;
         return DialogValue::from_number(count);
     }
     if (name == "property") {
-        std::vector<std::string> filtered;
-        filtered.reserve(args.size());
-        for (const auto& a : args) {
-            if (a != "=") filtered.push_back(a);
+        DialogValue out;
+        if (const DialogValue* p = arg(0); p && p->is_truthy()) {
+            const std::string pname = p->as_string();
+            if (world_.has_property && world_.has_property(pname)) {
+                if (args.size() > 1 && world_.set_property) world_.set_property(pname, args[1]);
+                if (world_.get_property) out = world_.get_property(pname);
+            }
         }
-        const std::string pname = filtered.empty() ? std::string{} : unquote(filtered[0]);
-        if (filtered.size() >= 2) {
-            auto val = eval_expr(filtered[1]);
-            if (world_.set_property) world_.set_property(pname, val);
-            return val;
-        }
-        if (world_.get_property) return world_.get_property(pname);
-        return DialogValue::from_number(0);
-    }
-    if (name == "ava") {
-        if (world_.set_avatar) world_.set_avatar(id_of(0));
-        return DialogValue::from_string(id_of(0));
-    }
-    if (name == "pal") {
-        if (world_.set_palette) world_.set_palette(id_of(0));
-        return DialogValue::from_string(id_of(0));
-    }
-    if (name == "tune") {
-        if (world_.set_tune) world_.set_tune(id_of(0));
-        return DialogValue::from_string(id_of(0));
-    }
-    if (name == "blip") {
-        if (world_.play_blip) world_.play_blip(id_of(0));
-        return DialogValue::from_string(id_of(0));
-    }
-    if (name == "exit") {
-        std::string room = id_of(0);
-        int x = args.size() > 1 ? static_cast<int>(eval_expr(args[1]).as_number()) : 0;
-        int y = args.size() > 2 ? static_cast<int>(eval_expr(args[2]).as_number()) : 0;
-        std::string fx = args.size() > 3 ? id_of(3) : std::string{};
-        if (world_.do_exit) world_.do_exit(room, x, y, fx);
-        return DialogValue::from_number(1);
+        return out;
     }
     if (name == "end") {
         if (world_.do_end) world_.do_end();
-        return DialogValue::from_number(1);
+        return DialogValue::null();
     }
-    if (name == "lock") {
-        if (world_.do_lock) world_.do_lock();
-        return DialogValue::from_number(1);
-    }
-    if (name == "printSprite" || name == "printTile" || name == "printItem" ||
-        name == "drws" || name == "drwt" || name == "drwi") {
-        const std::string id = id_of(0);
-        int frame_i = world_.anim_frame ? world_.anim_frame() : 0;
-        const bool spr = name == "printSprite" || name == "drws";
-        const bool til = name == "printTile" || name == "drwt";
-        const bool itm = name == "printItem" || name == "drwi";
-        if (spr && world_.find_sprite) {
-            if (const Sprite* s = world_.find_sprite(id); s && !s->frames.empty()) {
-                emit_drawing(s->frames[static_cast<std::size_t>(frame_i) % s->frames.size()],
-                             s->color_index);
-            }
-        } else if (til && world_.find_tile) {
-            if (const Tile* t = world_.find_tile(id); t && !t->frames.empty()) {
-                emit_drawing(t->frames[static_cast<std::size_t>(frame_i) % t->frames.size()],
-                             t->color_index);
-            }
-        } else if (itm && world_.find_item) {
-            if (const Item* it = world_.find_item(id); it && !it->frames.empty()) {
-                emit_drawing(it->frames[static_cast<std::size_t>(frame_i) % it->frames.size()],
-                             it->color_index);
-            }
+    if (name == "exit") {
+        std::string room;
+        std::optional<int> x, y;
+        std::optional<std::string> effect;
+        if (!args.empty()) room = resolve("room", arg(0));
+        if (args.size() >= 3) {
+            const double px = js_parse_int(args[1].as_string());
+            const double py = js_parse_int(args[2].as_string());
+            if (!std::isnan(px)) x = static_cast<int>(px);
+            if (!std::isnan(py)) y = static_cast<int>(py);
         }
-        return DialogValue::from_string({});
+        if (args.size() >= 4) effect = args[3].as_string();
+        if (world_.do_exit) return world_.do_exit(room, x, y, effect);
+        return DialogValue::null();
     }
+    if (name == "pal") {
+        if (!world_.palette) return DialogValue::null();
+        if (args.empty()) return world_.palette(std::nullopt);
+        return world_.palette(resolve("palette", arg(0)));
+    }
+    if (name == "ava") {
+        if (!world_.avatar) return DialogValue::null();
+        if (args.empty()) return world_.avatar(std::nullopt);
+        return world_.avatar(resolve("sprite", arg(0)));
+    }
+    if (name == "tune") {
+        if (!world_.tune) return DialogValue::null();
+        if (args.empty()) return world_.tune(std::nullopt);
+        return world_.tune(resolve("tune", arg(0)));
+    }
+    if (name == "blip") {
+        if (!args.empty() && world_.play_blip) world_.play_blip(resolve("blip", arg(0)));
+        return DialogValue::null();
+    }
+    if (name == "clr1" || name == "clr2" || name == "clr3" || name == "wvy" ||
+        name == "shk" || name == "rbw") {
+        toggle_effect(name);
+        return DialogValue::null();
+    }
+    if (name == "clr") {
+        push_effect("clr", args.empty() ? DialogValue::null() : args[0]);
+        return DialogValue::null();
+    }
+    if (name == "/clr" || name == "/wvy" || name == "/shk" || name == "/rbw") {
+        const std::string effect = name.substr(1);
+        if (has_effect(effect)) pop_effect(effect);
+        return DialogValue::null();
+    }
+    // _debugOnlyPrintFont: an editor debugging aid; shows nothing in citsy.
+    return DialogValue::null();
+}
 
-    (void)as_statement;
-    if (world_.get_var) return world_.get_var(name);
-    return DialogValue::from_string({});
+// ---------------------------------------------------------------------------
+// Dialog buffer
+// ---------------------------------------------------------------------------
+
+std::vector<TextSpan>& DialogVM::cur_page() {
+    if (pages_.empty()) pages_.emplace_back();
+    return pages_.back();
+}
+
+void DialogVM::add_text(const std::string& text) {
+    auto& page = cur_page();
+    if (text.empty()) return;
+    TextSpan sp;
+    sp.text = text;
+    sp.effects = effect_bits();
+    sp.color = effect_color();
+    page.push_back(std::move(sp));
+    last_was_break_ = false;
+}
+
+void DialogVM::add_linebreak() {
+    auto& page = cur_page();
+    if (page.empty()) return;  // no blank rows at the top of a screen
+    if (last_was_break_) {
+        // An empty line between two lines of text starts a new screen
+        // (citsy keeps its own screen size; this matches the old behaviour).
+        if (!page.empty() && !page.back().is_drawing && page.back().text == "\n") {
+            page.pop_back();
+        }
+        pages_.emplace_back();
+        last_was_break_ = false;
+        return;
+    }
+    TextSpan sp;
+    sp.text = "\n";
+    sp.effects = effect_bits();
+    sp.color = effect_color();
+    page.push_back(std::move(sp));
+    last_was_break_ = true;
+}
+
+void DialogVM::add_pagebreak() {
+    (void)cur_page();
+    last_was_break_ = false;
+}
+
+void DialogVM::add_drawing(const TileFrame& frame) {
+    auto& page = cur_page();
+    TextSpan sp;
+    sp.is_drawing = true;
+    sp.drawing = frame;
+    sp.effects = effect_bits();
+    const int c = effect_color();
+    sp.color = c;
+    sp.drawing_color = c < 0 ? kTextboxWhite : static_cast<std::uint8_t>(c);
+    page.push_back(std::move(sp));
+    last_was_break_ = false;
+}
+
+bool DialogVM::has_effect(std::string_view name) const {
+    return std::any_of(effects_.begin(), effects_.end(),
+                       [&](const Effect& e) { return e.name == name; });
+}
+
+void DialogVM::push_effect(std::string name, DialogValue param) {
+    effects_.push_back({std::move(name), std::move(param)});
+}
+
+void DialogVM::pop_effect(std::string_view name) {
+    for (auto it = effects_.rbegin(); it != effects_.rend(); ++it) {
+        if (it->name == name) {
+            effects_.erase(std::next(it).base());
+            return;
+        }
+    }
+}
+
+void DialogVM::toggle_effect(std::string name) {
+    if (has_effect(name)) pop_effect(name);
+    else push_effect(std::move(name));
+}
+
+std::uint8_t DialogVM::effect_bits() const {
+    std::uint8_t bits = GlyphFx::None;
+    for (const auto& e : effects_) {
+        if (e.name == "wvy") bits |= GlyphFx::Wavy;
+        else if (e.name == "shk") bits |= GlyphFx::Shaky;
+        else if (e.name == "rbw") bits |= GlyphFx::Rainbow;
+    }
+    return bits;
+}
+
+int DialogVM::effect_color() const {
+    // Bitsy applies effects in the order they were turned on; the last colour wins.
+    int color = -1;
+    for (const auto& e : effects_) {
+        if (e.name == "clr1" || e.name == "_debug_highlight") color = 0;
+        else if (e.name == "clr2") color = 1;
+        else if (e.name == "clr3") color = 2;
+        else if (e.name == "clr") {
+            const double n = e.param.as_number();
+            color = std::isfinite(n) && n >= 0 ? static_cast<int>(n) : 0;
+        }
+    }
+    return color;
+}
+
+// ===========================================================================
+// Test helpers
+// ===========================================================================
+
+std::vector<std::string> extract_dialog_pages(std::string_view content) {
+    std::vector<std::string> pages;
+    DialogVM vm;
+    vm.start(content, DialogWorld{});
+    while (vm.active()) {
+        pages.push_back(vm.plain_text());
+        if (!vm.continue_page()) break;
+    }
+    return pages;
 }
 
 DialogScript parse_dialog_script(std::string_view source) {
@@ -853,18 +1065,16 @@ DialogResult run_dialog_script(DialogScript& script, DialogWorld world) {
         result.end_game = true;
         if (prev_end) prev_end();
     };
-    world.do_exit = [&](std::string room, int x, int y, std::string fx) {
-        result.exit = DialogExit{room, x, y, fx};
-        if (prev_exit) prev_exit(std::move(room), x, y, std::move(fx));
+    world.do_exit = [&](std::string room, std::optional<int> x, std::optional<int> y,
+                        std::optional<std::string> fx) {
+        result.exit = DialogExit{room, x.value_or(0), y.value_or(0), fx.value_or("")};
+        if (prev_exit) return prev_exit(std::move(room), x, y, std::move(fx));
+        return DialogValue::null();
     };
-    script.vm.start(script.source, std::move(world), "compat", {});
-    if (script.vm.active()) {
+    script.vm.start(script.source, std::move(world), "compat");
+    while (script.vm.active()) {
         result.pages.push_back(script.vm.plain_text());
-        while (script.vm.continue_page()) {
-            result.pages.push_back(script.vm.plain_text());
-        }
-    } else if (!script.vm.plain_text().empty()) {
-        result.pages.push_back(script.vm.plain_text());
+        if (!script.vm.continue_page()) break;
     }
     return result;
 }

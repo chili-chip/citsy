@@ -1,0 +1,55 @@
+> start
+room 1 at 8,9
+mode narrating
+dialog open
+> read
+text "mossland"
+room 1 at 8,9
+mode playing
+dialog -
+inventory -
+> press right down down down
+room 1 at 9,11
+mode playing
+dialog open
+> read
+text "this bottle world has everything we need"
+room 1 at 9,11
+mode playing
+dialog -
+inventory -
+> press down
+room 1 at 9,11
+mode playing
+dialog open
+> read
+text "soil, water, air, light"
+room 1 at 9,11
+mode playing
+dialog -
+inventory -
+> press down
+room 1 at 9,11
+mode playing
+dialog open
+> read
+text "if we left, could we survive?"
+room 1 at 9,11
+mode playing
+dialog -
+inventory -
+> press right down right right
+room 2 at 3,12
+mode playing
+dialog -
+inventory -
+> press right up right up up up right right
+room 2 at 7,8
+mode playing
+dialog -
+inventory -
+> read
+room 2 at 7,8
+mode playing
+dialog -
+inventory -

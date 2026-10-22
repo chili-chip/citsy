@@ -86,7 +86,7 @@ constexpr std::string_view kEmptyGrid =
 
 std::string game_src(std::string extra, std::string title = {}) {
     std::string s;
-    if (!title.empty()) s += title + "\n\n";
+    s += title + "\n\n";  // line 0 is always the title
     s += "# BITSY VERSION 8.15\n\n! ROOM_FORMAT 1\n\n";
     s += std::string(kPal) + "\nROOM 0\n" + std::string(kEmptyGrid);
     s += "PAL 0\n" + extra + "\n" + std::string(kAvatar);
@@ -290,7 +290,7 @@ TEST_CASE("textbox: rainbow overrides {clr} when both are on", "[font][textbox][
 
 TEST_CASE("dialog vm: stacked effect tags combine", "[dialog][textbox][fx]") {
     citsy::DialogVM vm;
-    vm.start("\"{wvy}{rbw}Hi{/rbw}{/wvy}\"", {});
+    vm.start("{wvy}{rbw}Hi{/rbw}{/wvy}", {});
     REQUIRE_FALSE(vm.spans().empty());
     CHECK(vm.spans()[0].text == "Hi");
     CHECK(vm.spans()[0].effects ==
@@ -301,7 +301,7 @@ TEST_CASE("dialog vm: stacked effect tags combine", "[dialog][textbox][fx]") {
 TEST_CASE("dialog vm: later tag adds an effect without dropping the first",
           "[dialog][textbox][fx]") {
     citsy::DialogVM vm;
-    vm.start("\"{wvy}A{shk}B{/shk}C{/wvy}D\"", {});
+    vm.start("{wvy}A{shk}B{/shk}C{/wvy}D", {});
     REQUIRE(vm.spans().size() >= 4);
     CHECK(vm.spans()[0].text == "A");
     CHECK(vm.spans()[0].effects == citsy::GlyphFx::Wavy);
@@ -316,19 +316,20 @@ TEST_CASE("dialog vm: later tag adds an effect without dropping the first",
 TEST_CASE("dialog vm: default color is unset (white) until {clr}",
           "[dialog][textbox]") {
     citsy::DialogVM vm;
-    vm.start("\"plain{clr1}ink{/clr1}plain\"", {});
+    // {clr1} toggles; Bitsy has no {/clr1}. clr1..clr3 are palette colours 0..2.
+    vm.start("plain{clr1}ink{clr1}plain", {});
     REQUIRE(vm.spans().size() >= 3);
     CHECK(vm.spans()[0].color == -1);
-    CHECK(vm.spans()[1].color == 1);
+    CHECK(vm.spans()[1].color == 0);
     CHECK(vm.spans()[2].color == -1);
 }
 
 TEST_CASE("dialog vm: {rbw} and {clr2} can stack", "[dialog][textbox][fx]") {
     citsy::DialogVM vm;
-    vm.start("\"{rbw}{clr2}X\"", {});
+    vm.start("{rbw}{clr2}X", {});
     REQUIRE_FALSE(vm.spans().empty());
     CHECK(vm.spans()[0].effects == citsy::GlyphFx::Rainbow);
-    CHECK(vm.spans()[0].color == 2);
+    CHECK(vm.spans()[0].color == 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -625,9 +626,9 @@ TEST_CASE("engine: short dialog dismisses after typing completes",
     CHECK_FALSE(engine.dialog_active());
 }
 
-TEST_CASE("engine: {p} still starts a new dialog page after screens",
+TEST_CASE("engine: {pg} still starts a new dialog page after screens",
           "[engine][textbox][page]") {
-    citsy::Engine engine(game_src("", "\"one{p}two\""));
+    citsy::Engine engine(game_src("", "one{pg}two"));
     citsy::MockHost host;
     engine.start(host);
     engine.update(host);
@@ -659,7 +660,7 @@ TEST_CASE("engine: open dialog installs black white and rainbow palette slots",
 
 TEST_CASE("engine: rainbow dialog paints reserved indices",
           "[engine][textbox][rbw]") {
-    citsy::Engine engine(game_src("", "\"{rbw}RAINBOW TEXT\""));
+    citsy::Engine engine(game_src("", "{rbw}RAINBOW TEXT"));
     citsy::MockHost host;
     engine.start(host);
     finish_typing(engine, host);
@@ -671,7 +672,7 @@ TEST_CASE("engine: rainbow dialog paints reserved indices",
 
 TEST_CASE("engine: rainbow animation changes pixels over time",
           "[engine][textbox][rbw]") {
-    citsy::Engine engine(game_src("", "\"{rbw}RAINBOW\""));
+    citsy::Engine engine(game_src("", "{rbw}RAINBOW"));
     citsy::MockHost host;
     host.dt_ms = 50;
     engine.start(host);
@@ -716,7 +717,7 @@ TEST_CASE("engine: typewriter reveals letters over time",
 
 TEST_CASE("engine: Ok skips remaining typing then a second Ok advances",
           "[engine][textbox][typewriter]") {
-    citsy::Engine engine(game_src("", "\"HELLO{p}BYE\""));
+    citsy::Engine engine(game_src("", "HELLO{pg}BYE"));
     citsy::MockHost host;
     engine.start(host);
     engine.update(host);

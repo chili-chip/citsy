@@ -1,6 +1,6 @@
-# BITSY VERSION 8.12
+playable core
 
-NAME playable core
+# BITSY VERSION 8.12
 
 ! ROOM_FORMAT 1
 
@@ -109,8 +109,9 @@ NAME key
 DLG DLG_KEY
 
 DLG DLG_NPC
-"Hello!"
-"Nice to meet you."
+"""
+Hello!{pg}Nice to meet you.
+"""
 
 DLG DLG_KEY
-"You found a key."
+You found a key.

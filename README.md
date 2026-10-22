@@ -258,11 +258,11 @@ Dialog is not just text — it is Bitsy's lightweight game logic language. The e
 - **Text lines** and `{print …}` / `{say …}` expressions
 - **Variable assignment** — `{name = value}`, `{count = count + 1}`
 - **Conditionals and lists** — `{sequence}` / `{cycle}` / `{shuffle}` and `- cond ?` / `- else`
-- **Actions** — `{item}`, `{ava}`, `{pal}`, `{tune}`, `{blip}`, `{exit}`, `{end}`, `{lock}` / `{property locked}`
+- **Actions** — `{item}`, `{ava}`, `{pal}`, `{tune}`, `{blip}`, `{exit}`, `{end}`, `{property locked}`
 - **Drawings** — `{printSprite}`, `{printTile}`, `{printItem}`
 - **Effects** — `{wvy}`, `{shk}`, `{rbw}`, `{clr}` / `{clr1}` / `{clr2}` / `{clr3}`
 
-Scripts are parsed from `DLG` segments in game data. citsy implements the same expression grammar as the reference engine for supported versions.
+Scripts are parsed from `DLG` segments in game data. `src/dialog/script.cpp` is a port of Bitsy 8.15's `script.js`, and `tests/parity` plays the same games in the Bitsy engine and in citsy to check they match.
 
 ---
 

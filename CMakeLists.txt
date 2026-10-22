@@ -21,8 +21,8 @@ option(CITSY_BUILD_WEB              "Build the Emscripten browser player" OFF)
 add_library(citsy STATIC
     src/parser/parser.cpp
     src/engine/engine.cpp
-    src/dialog/linear.cpp
     src/dialog/script.cpp
+    src/dialog/value.cpp
     src/render/compose.cpp
     src/font/font.cpp
     src/sound/sound.cpp
@@ -80,6 +80,7 @@ if(CITSY_BUILD_TESTS)
         tests/unit/test_simulation.cpp
         tests/unit/test_phase3.cpp
         tests/unit/test_textbox.cpp
+        tests/unit/test_parity.cpp
     )
 
     target_link_libraries(citsy_tests

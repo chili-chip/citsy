@@ -25,6 +25,20 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  # The parity goldens come from the Bitsy 8.15 reference engine; fail when a
+  # case or game changed and its golden was not written again.
+  parity-goldens:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Check goldens against Bitsy 8.15
+        run: node tests/parity/bitsy_reference.mjs --check
+
   # Line coverage of src/ and include/, for information only: the target is 80%
   # (AGENTS.md), and a lower number never fails this job or blocks the PR.
   coverage:

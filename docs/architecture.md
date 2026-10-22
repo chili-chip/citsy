@@ -140,7 +140,7 @@ while (engine.is_running()) {
 
 ### Dialog (`src/dialog/`)
 
-Phase 1 extracts linear text pages from `DLG` source (`extract_dialog_pages`). The script interpreter (`DialogVM`) evaluates `{print}`, assignments, conditionals, lists, inventory, `{ava}`/`{pal}`/`{tune}`/`{blip}`, `{exit}`, `{end}`, `{lock}`, `{printSprite}`/`{printTile}`/`{printItem}`, and text effects `{wvy}`/`{shk}`/`{rbw}`/`{clr}`.
+The script interpreter (`DialogVM`, `src/dialog/script.cpp`) is a port of Bitsy 8.15's `script.js` parser and interpreter, with JavaScript value rules in `src/dialog/value.cpp`. It runs a script a page at a time and calls the engine through `DialogWorld` for variables, items, `{property locked}`, `{ava}`/`{pal}`/`{tune}`/`{blip}`, `{exit}`, `{end}` and drawings. `tests/parity` checks it against the Bitsy engine itself.
 
 ### Render (`src/render/`)
 

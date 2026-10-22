@@ -1,0 +1,25 @@
+# Game flow: items, exit locks, a locked ending, {exit} with a transition,
+# an exit transition, {end}, restart after the ending and on Menu.
+game ../games/flow.bitsy
+read                         # title
+press down right right right right up   # the gate, no key: locked
+read
+press left left left         # gem (no dialog), then key (dialog before pickup)
+read
+press right right right right # the gate opens (this branch unlocks it)
+read
+wait 2000
+press down down              # a locked ending
+read
+press up up right right up   # the mover: {exit "far" 4 4 "wave"}
+read
+wait 3000
+press left                   # exit with fade_w back to room 0
+wait 3000
+press up                     # the ender: {end}
+read
+press ok                     # restart from the title
+read
+press down
+press menu                   # Menu also restarts
+read

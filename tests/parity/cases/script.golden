@@ -1,0 +1,359 @@
+> start
+room 0 at 1,2
+mode narrating
+dialog open
+> read
+text "script parity"
+room 0 at 1,2
+mode playing
+dialog -
+inventory -
+var n = 0
+> press up
+room 0 at 1,2
+mode playing
+dialog open
+> read
+text "a=5 b=2.5 c=x1 f=0.30000000000000004"
+room 0 at 1,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 0
+> press right up
+room 0 at 2,2
+mode playing
+dialog open
+> read
+text "first"
+room 0 at 2,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 0
+> press up
+room 0 at 2,2
+mode playing
+dialog open
+> read
+text "second"
+room 0 at 2,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press up
+room 0 at 2,2
+mode playing
+dialog open
+> read
+text "third and last"
+room 0 at 2,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press up
+room 0 at 2,2
+mode playing
+dialog open
+> read
+text "third and last"
+room 0 at 2,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press right up
+room 0 at 3,2
+mode playing
+dialog open
+> read
+text "ping"
+room 0 at 3,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press up
+room 0 at 3,2
+mode playing
+dialog open
+> read
+text "pong"
+room 0 at 3,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press up
+room 0 at 3,2
+mode playing
+dialog open
+> read
+text "ping"
+room 0 at 3,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press right up
+room 0 at 4,2
+mode playing
+dialog open
+> read
+text "red"
+room 0 at 4,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press up
+room 0 at 4,2
+mode playing
+dialog open
+> read
+text "blue"
+room 0 at 4,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press up
+room 0 at 4,2
+mode playing
+dialog open
+> read
+text "green"
+room 0 at 4,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press up
+room 0 at 4,2
+mode playing
+dialog open
+> read
+text "blue"
+room 0 at 4,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press right up
+room 0 at 5,2
+mode playing
+dialog open
+> read
+text "n is 1 \"some\""
+room 0 at 5,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press right up
+room 0 at 6,2
+mode playing
+dialog open
+> read
+text "plain wavy colour rainbow shake tile next line new page"
+room 0 at 6,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press right up
+room 0 at 7,2
+mode playing
+dialog open
+> read
+text "pal=1 ava=1"
+room 0 at 7,2
+mode playing
+dialog -
+inventory -
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press right up
+room 0 at 8,2
+mode playing
+dialog open
+> read
+text "keys=2 now=1"
+room 0 at 8,2
+mode playing
+dialog -
+inventory 0=1
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+> press right up
+room 0 at 9,2
+mode playing
+dialog open
+> read
+text "hello world [] []"
+room 0 at 9,2
+mode playing
+dialog -
+inventory 0=1
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+var s = "hello"
+var t = "hello world"
+> press right up
+room 0 at 10,2
+mode playing
+dialog open
+> read
+text "This is a long line of dialog that goes on and on so that it has to wrap over several rows and then over several pages of the text box, because it never seems to stop talking about nothing at all."
+room 0 at 10,2
+mode playing
+dialog -
+inventory 0=1
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+var s = "hello"
+var t = "hello world"
+> press left left left left left up
+room 0 at 5,2
+mode playing
+dialog open
+> read
+text "n is 1 \"some\""
+room 0 at 5,2
+mode playing
+dialog -
+inventory 0=1
+var a = 5
+var b = 2.5
+var c = "x1"
+var d = false
+var e = true
+var f = 0.30000000000000004
+var g = 40
+var n = 1
+var s = "hello"
+var t = "hello world"

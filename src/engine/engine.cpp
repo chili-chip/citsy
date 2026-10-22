@@ -11,11 +11,13 @@
 #include <algorithm>
 #include <array>
 #include <fstream>
+#include <memory>
 #include <optional>
 #include <span>
 #include <sstream>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 namespace citsy {
@@ -56,10 +58,6 @@ enum class Dir { None = -1, Up = 0, Down = 1, Left = 2, Right = 3 };
     return 0;
 }
 
-std::string exit_key(std::string_view room, int x, int y) {
-    return std::string(room) + ":" + std::to_string(x) + "," + std::to_string(y);
-}
-
 } // namespace
 
 // ===========================================================================
@@ -75,12 +73,18 @@ struct Engine::Impl {
     int         avatar_x = 0;
     int         avatar_y = 0;
     std::string avatar_id{Game::kAvatarId};
+    std::string palette_id = "0";
+    std::string tune_id = "0";  ///< Bitsy's state.tune; "0" is silence
 
     std::unordered_map<std::string, std::vector<RoomItem>> room_items;
-    std::unordered_map<std::string, int> inventory;
+    std::unordered_map<std::string, double> inventory;
     std::unordered_map<std::string, DialogValue> variables;
-    std::unordered_map<std::string, bool> locked_exits;
-    std::unordered_map<std::string, bool> locked_endings;
+
+    // The `locked` property of each exit and ending in the current room. Bitsy
+    // creates these when a room is entered, so locks only last for one visit.
+    std::vector<std::shared_ptr<DialogValue>> exit_locks;
+    std::vector<std::shared_ptr<DialogValue>> ending_locks;
+    std::shared_ptr<DialogValue> dialog_context;  ///< lock of the exit/ending running the dialog
 
     Dir    cur_dir        = Dir::None;
     double hold_timer_ms  = 0.0;
@@ -96,14 +100,12 @@ struct Engine::Impl {
     double                     dialog_time_ms = 0;
     double                     type_page_start_ms_ = 0;
     bool                       type_skip_ = false;
-    std::string                lock_key;
-    bool                       lock_is_ending = false;
+    bool                       textbox_centered_ = false;
+    std::string                dialog_log_;  ///< text shown since take_dialog_text()
 
-    bool ending_hold = false;  // ended, waiting for dismiss
-    bool narrating   = false;
-    bool pending_end = false;
-    bool tune_paused_for_dialog_ = false;
-    std::optional<Exit> queued_script_exit;
+    bool narrating = false;  ///< title or ending text over a cleared screen
+    bool ending    = false;  ///< game over; the next press restarts
+    bool game_over = false;  ///< restart at the end of this update
 
     BitsyFont   font;
     SoundPlayer sound;
@@ -166,120 +168,141 @@ struct Engine::Impl {
     }
 
     void apply_palette(const std::string& pal_id) {
+        palette_id = pal_id;
         const Palette* pal = game.find_palette(pal_id);
         if (!pal && !game.palettes.empty()) pal = &game.palettes.begin()->second;
         if (pal) palette = pal->colors;
         while (palette.size() < 3) palette.push_back({});
     }
 
-    std::string resolve_item_id(std::string_view key) const {
-        if (const Item* it = game.find_item(key)) return it->id;
-        return std::string(key);
-    }
-
+    /// Bitsy's initRoom tune rule: stop for no tune, and only restart the
+    /// music when the room's tune differs from the one playing.
     void apply_room_tune() {
         const Room* room = current_room();
-        std::string tid = (room && !room->tune_id.empty()) ? room->tune_id : "0";
-        if (tid == "0") {
-            sound.stop_tune();
-            return;
-        }
-        const Tune* t = game.find_tune(tid);
+        const std::string tid = room ? room->tune_id : std::string{};
+        const Tune* t = (tid.empty() || tid == "0") ? nullptr : game.find_tune(tid);
         if (!t) {
+            tune_id = "0";
             sound.stop_tune();
-            return;
+        } else if (tid != tune_id) {
+            tune_id = tid;
+            sound.play_tune(*t);
         }
-        if (sound.tune_id() != t->id) sound.play_tune(*t);
     }
 
     void apply_room_avatar() {
         const Room* room = current_room();
-        if (room && !room->avatar_id.empty()) {
-            if (const Sprite* s = game.find_sprite(room->avatar_id))
-                avatar_id = s->id;
-            else
-                avatar_id = room->avatar_id;
-        } else {
-            avatar_id = std::string(Game::kAvatarId);
+        avatar_id = (room && !room->avatar_id.empty()) ? room->avatar_id
+                                                       : std::string(Game::kAvatarId);
+    }
+
+    /// Bitsy looks a script argument up in the name map first, then uses it as an id.
+    template <typename T>
+    static std::string id_for_name(const IdMap<T>& map, std::string_view key) {
+        for (const auto& [id, obj] : map) {
+            if (!obj.name.empty() && obj.name == key) return id;
         }
+        return std::string(key);
+    }
+
+    [[nodiscard]] std::string resolve_name(std::string_view kind, std::string_view key) const {
+        if (kind == "room")    return id_for_name(game.rooms, key);
+        if (kind == "tile")    return id_for_name(game.tiles, key);
+        if (kind == "sprite")  return id_for_name(game.sprites, key);
+        if (kind == "item")    return id_for_name(game.items, key);
+        if (kind == "palette") return id_for_name(game.palettes, key);
+        if (kind == "tune")    return id_for_name(game.tunes, key);
+        if (kind == "blip")    return id_for_name(game.blips, key);
+        return std::string(key);
+    }
+
+    [[nodiscard]] const TileFrame* drawing_frame(char kind, std::string_view id) const {
+        const std::vector<TileFrame>* frames = nullptr;
+        if (kind == 't') {
+            if (auto it = game.tiles.find(id); it != game.tiles.end()) frames = &it->second.frames;
+        } else if (kind == 's') {
+            if (auto it = game.sprites.find(id); it != game.sprites.end()) frames = &it->second.frames;
+        } else {
+            if (auto it = game.items.find(id); it != game.items.end()) frames = &it->second.frames;
+        }
+        return frames && !frames->empty() ? &frames->front() : nullptr;
+    }
+
+    void play_blip_id(const std::string& id) {
+        if (id.empty()) return;
+        if (const Blip* b = game.find_blip(id)) sound.play_blip(*b, game);
     }
 
     DialogWorld make_world() {
         DialogWorld w;
-        w.get_var = [this](std::string_view name) -> DialogValue {
+        w.get_var = [this](std::string_view name) -> std::optional<DialogValue> {
             auto it = variables.find(std::string(name));
-            if (it == variables.end()) return DialogValue::from_string({});
+            if (it == variables.end()) return std::nullopt;
             return it->second;
         };
         w.set_var = [this](std::string_view name, const DialogValue& v) {
             variables[std::string(name)] = v;
         };
         w.item_count = [this](std::string_view id) {
-            const std::string key = resolve_item_id(id);
-            auto it = inventory.find(key);
-            return it == inventory.end() ? 0 : it->second;
+            auto it = inventory.find(std::string(id));
+            return it == inventory.end() ? 0.0 : it->second;
         };
-        w.set_item = [this](std::string_view id, int count) {
-            inventory[resolve_item_id(id)] = std::max(0, count);
+        w.set_item = [this](std::string_view id, double count) {
+            inventory[std::string(id)] = count;
         };
-        w.get_property = [this](std::string_view name) -> DialogValue {
-            if (name != "locked" || lock_key.empty())
-                return DialogValue::from_number(0);
-            const bool on = lock_is_ending ? locked_endings[lock_key]
-                                           : locked_exits[lock_key];
-            return DialogValue::from_number(on ? 1 : 0);
+        w.has_property = [this](std::string_view name) {
+            return dialog_context && name == "locked";
         };
-        w.set_property = [this](std::string_view name, const DialogValue& v) {
-            if (name != "locked" || lock_key.empty()) return;
-            const bool on = v.is_truthy();
-            if (lock_is_ending) locked_endings[lock_key] = on;
-            else locked_exits[lock_key] = on;
+        w.get_property = [this](std::string_view) {
+            return dialog_context ? *dialog_context : DialogValue::null();
         };
-        w.set_avatar = [this](std::string_view id) {
-            if (const Sprite* s = game.find_sprite(id)) avatar_id = s->id;
-            else avatar_id = std::string(id);
+        w.set_property = [this](std::string_view, const DialogValue& v) {
+            if (dialog_context) *dialog_context = v;
         };
-        w.set_palette = [this](std::string_view id) {
-            apply_palette(std::string(id));
+        w.avatar = [this](std::optional<std::string> id) {
+            if (id) avatar_id = *id;
+            return DialogValue::from_string(avatar_id);
         };
-        w.set_tune = [this](std::string_view id) {
-            auto s = std::string(id);
-            if (s.empty() || s == "0") {
-                sound.stop_tune();
-                return;
+        w.palette = [this](std::optional<std::string> id) {
+            if (id) apply_palette(*id);
+            return DialogValue::from_string(palette_id);
+        };
+        w.tune = [this](std::optional<std::string> id) {
+            if (id) {
+                if (*id == "0") {
+                    sound.stop_tune();
+                } else if (*id != tune_id) {
+                    if (const Tune* t = game.find_tune(*id)) sound.play_tune(*t);
+                }
+                tune_id = *id;
             }
-            if (const Tune* t = game.find_tune(s)) sound.play_tune(*t);
+            return DialogValue::from_string(tune_id);
         };
-        w.play_blip = [this](std::string_view id) {
-            if (const Blip* b = game.find_blip(id)) sound.play_blip(*b, game);
-        };
-        w.do_exit = [this](std::string room, int x, int y, std::string fx) {
-            Exit ext;
-            if (const Room* r = game.find_room(room)) ext.dest_room_id = r->id;
-            else ext.dest_room_id = std::move(room);
-            ext.dest_x = x;
-            ext.dest_y = y;
-            ext.transition_effect = std::move(fx);
-            queued_script_exit = std::move(ext);
+        w.play_blip = [this](std::string_view id) { play_blip_id(std::string(id)); };
+        w.do_exit = [this](std::string room, std::optional<int> x, std::optional<int> y,
+                           std::optional<std::string> fx) {
+            if (x && y) {
+                Exit ext;
+                ext.dest_room_id = std::move(room);
+                ext.dest_x = *x;
+                ext.dest_y = *y;
+                if (fx) ext.transition_effect = *fx;
+                // Bitsy's script waits for the transition and then goes on in
+                // the new room; citsy's runs a page at once, so it moves first.
+                go_to(ext, /*move_first=*/true);
+                return DialogValue::from_string(current_room_id);
+            }
+            return DialogValue::from_string(current_room_id);
         };
         w.do_end = [this] {
-            pending_end = true;
+            ending = true;
+            narrating = true;
+            textbox_centered_ = true;
         };
-        w.do_lock = [this] {
-            if (lock_key.empty()) return;
-            if (lock_is_ending) locked_endings[lock_key] = true;
-            else locked_exits[lock_key] = true;
+        w.resolve = [this](std::string_view kind, std::string_view key) {
+            return resolve_name(kind, key);
         };
-        w.find_tile = [this](std::string_view id) -> const Tile* {
-            return game.find_tile(id);
-        };
-        w.find_sprite = [this](std::string_view id) -> const Sprite* {
-            return game.find_sprite(id);
-        };
-        w.find_item = [this](std::string_view id) -> const Item* {
-            return game.find_item(id);
-        };
-        w.anim_frame = [this] { return anim_frame; };
+        w.drawing = [this](char kind, std::string_view id) { return drawing_frame(kind, id); };
         return w;
     }
 
@@ -289,17 +312,25 @@ struct Engine::Impl {
         avatar_y = y;
         load_room_palette();
         apply_room_avatar();
+        exit_locks.clear();
+        ending_locks.clear();
+        if (const Room* room = current_room()) {
+            for (std::size_t i = 0; i < room->exits.size(); ++i)
+                exit_locks.push_back(std::make_shared<DialogValue>(DialogValue::from_bool(false)));
+            for (std::size_t i = 0; i < room->endings.size(); ++i)
+                ending_locks.push_back(std::make_shared<DialogValue>(DialogValue::from_bool(false)));
+        }
         apply_room_tune();
     }
 
     void init_runtime() {
         current_room_id = game.start_room_id();
-        avatar_x = 0;
-        avatar_y = 0;
+        int x = 0;
+        int y = 0;
         if (const Sprite* av = game.avatar(); av && av->position) {
             current_room_id = av->position->room_id;
-            avatar_x = av->position->x;
-            avatar_y = av->position->y;
+            x = av->position->x;
+            y = av->position->y;
         }
 
         room_items.clear();
@@ -313,65 +344,45 @@ struct Engine::Impl {
 
         inventory.clear();
         if (const Sprite* av = game.avatar()) {
-            inventory = av->inventory;
+            for (const auto& [id, n] : av->inventory) inventory[id] = n;
         }
 
         variables.clear();
         for (const auto& [name, var] : game.variables) {
-            if (var.value == "true") {
-                variables[name] = DialogValue::from_number(1);
-            } else if (var.value == "false") {
-                variables[name] = DialogValue::from_number(0);
-            } else if (looks_like_number(var.value)) {
-                try {
-                    variables[name] = DialogValue::from_number(std::stod(var.value));
-                } catch (...) {
-                    variables[name] = DialogValue::from_string(var.value);
-                }
-            } else {
-                variables[name] = DialogValue::from_string(var.value);
-            }
+            variables[name] = DialogValue::from_var_text(var.value);
         }
 
-        locked_exits.clear();
-        locked_endings.clear();
         dlg.reset();
-        dlg.list_cursors.clear();
+        dialog_context.reset();
         dialog_plain.clear();
-        ending_hold = false;
+        textbox_pixels.clear();
+        textbox_pages_.clear();
+        textbox_page_ = 0;
+        ending = false;
         narrating = false;
-        pending_end = false;
-        queued_script_exit.reset();
+        game_over = false;
         type_page_start_ms_ = 0;
         type_skip_ = false;
-        cur_dir = Dir::None;
-        hold_timer_ms = 0;
-        any_held = false;
-        ignore_input = false;
-        menu_held = false;
         anim_counter_ms = 0;
         anim_frame = 0;
         gfx_mode = GraphicsMode::Map;
+        transition = Transition{};
         sound.stop_tune();
-        tune_paused_for_dialog_ = false;
+        sound.resume_tune();
+        tune_id = "0";
 
-        load_room_palette();
-        apply_room_avatar();
-        apply_room_tune();
+        enter_room(current_room_id, x, y);
         compose();
     }
 
-    static bool looks_like_number(std::string_view s) {
-        if (s.empty()) return false;
-        std::size_t i = 0;
-        if (s[0] == '-' || s[0] == '+') ++i;
-        bool digit = false;
-        for (; i < s.size(); ++i) {
-            if (s[i] == '.') continue;
-            if (s[i] < '0' || s[i] > '9') return false;
-            digit = true;
-        }
-        return digit;
+    void start_title() {
+        narrating = true;
+        start_dialog(game.title_dialog, {}, {}, nullptr);
+    }
+
+    void restart() {
+        init_runtime();
+        start_title();
     }
 
     void snapshot_room(TransitionFrame& frame, const std::string& room_id,
@@ -402,7 +413,7 @@ struct Engine::Impl {
     void compose() {
         const bool need_room =
             !composed_valid_ ||
-            narrating != composed_narrating_ ||
+            (narrating || ending) != composed_narrating_ ||
             current_room_id != composed_room_ ||
             avatar_x != composed_ax_ ||
             avatar_y != composed_ay_ ||
@@ -411,7 +422,7 @@ struct Engine::Impl {
             items_generation_ != composed_items_gen_;
 
         if (need_room) {
-            if (narrating) {
+            if (narrating || ending) {
                 map1.fill(0);
                 map2.fill(0);
                 video.fill(0);
@@ -429,7 +440,7 @@ struct Engine::Impl {
                 compose_room(st, ComposeBuffers{map1, map2, video});
             }
             composed_valid_ = true;
-            composed_narrating_ = narrating;
+            composed_narrating_ = narrating || ending;
             composed_room_ = current_room_id;
             composed_ax_ = avatar_x;
             composed_ay_ = avatar_y;
@@ -548,24 +559,6 @@ struct Engine::Impl {
         return -1;
     }
 
-    [[nodiscard]] const Exit* exit_at(int x, int y) const {
-        const Room* room = current_room();
-        if (!room) return nullptr;
-        for (const Exit& e : room->exits) {
-            if (e.x == x && e.y == y) return &e;
-        }
-        return nullptr;
-    }
-
-    [[nodiscard]] const EndingRef* ending_at(int x, int y) const {
-        const Room* room = current_room();
-        if (!room) return nullptr;
-        for (const EndingRef& e : room->endings) {
-            if (e.x == x && e.y == y) return &e;
-        }
-        return nullptr;
-    }
-
     std::string dialog_source(const std::string& dialog_id) const {
         if (dialog_id.empty()) return {};
         auto it = game.dialogues.find(dialog_id);
@@ -573,57 +566,50 @@ struct Engine::Impl {
         return {};
     }
 
+    [[nodiscard]] bool has_dialog(const std::string& dialog_id) const {
+        return !dialog_id.empty() && game.dialogues.count(dialog_id) > 0;
+    }
+
     std::string sprite_dialog_id(const Sprite& spr) const {
         if (!spr.dialog_id.empty()) return spr.dialog_id;
-        if (game.dlg_compat) {
-            if (game.dialogues.count(spr.id)) return spr.id;
-        }
+        if (game.dlg_compat) return spr.id;
         return {};
     }
 
-    void finish_dialog(bool from_player) {
-        if (from_player) {
-            ignore_input = true;
-            cur_dir = Dir::None;
-        }
+    void clear_textbox() {
         dialog_plain.clear();
         textbox_pixels.clear();
         textbox_pages_.clear();
         textbox_page_ = 0;
-        if (queued_script_exit) {
-            Exit ext = *queued_script_exit;
-            queued_script_exit.reset();
-            take_exit(ext, /*skip_dialog=*/true);
-        }
-        if (pending_end) {
-            pending_end = false;
-            ending_hold = true;
-            narrating = true;
-            running = false;
-        }
-
-        if (tune_paused_for_dialog_ && !dlg.active()) {
-            sound.resume_tune();
-            tune_paused_for_dialog_ = false;
-        }
     }
 
-    void start_dialog(std::string source, std::function<void()> on_end,
-                      std::string script_id = {}) {
+    /// Bitsy's onExitDialog: leave narration, run the callback, resume music.
+    void on_exit_dialog(const std::function<void()>& callback) {
+        narrating = false;
+        dialog_context.reset();
+        clear_textbox();
+        if (callback) callback();
+        sound.resume_tune();
+    }
+
+    /// Bitsy's startDialog. A non-empty @p script_id keeps the compiled script
+    /// (and its sequence positions) for the next time. @p context is the lock
+    /// of the exit or ending the dialog belongs to, for `{property "locked"}`.
+    void start_dialog(std::string source, std::string script_id,
+                      std::function<void()> callback,
+                      std::shared_ptr<DialogValue> context) {
+        sound.pause_tune();
         dialog_time_ms = 0;
         textbox_page_ = 0;
         textbox_pages_dirty_ = true;
+        textbox_centered_ = narrating;
         last_revealed_ = -1;
         reset_typewriter();
-        if (script_id.empty()) script_id = lock_key;
-        dlg.start(std::move(source), make_world(), std::move(script_id), std::move(on_end));
-        if (!dlg.active()) {
-            finish_dialog(false);
-        } else {
-            if (sound.tune_playing()) {
-                sound.pause_tune();
-                tune_paused_for_dialog_ = true;
-            }
+        dialog_context = std::move(context);
+        dlg.start(source, make_world(), std::move(script_id),
+                  [this, cb = std::move(callback)] { on_exit_dialog(cb); });
+        if (dlg.active()) {
+            log_dialog_page();
             refresh_textbox();
         }
     }
@@ -646,19 +632,30 @@ struct Engine::Impl {
         }
         textbox_page_ = 0;
         if (!dlg.continue_page()) {
-            finish_dialog(true);
+            // Ignore held keys until they are released, so the avatar does not
+            // walk off as the dialog closes.
+            ignore_input = true;
+            cur_dir = Dir::None;
         } else {
+            log_dialog_page();
             textbox_pages_dirty_ = true;
             last_revealed_ = -1;
             refresh_textbox();
         }
     }
 
+    void log_dialog_page() {
+        dialog_log_ += dlg.plain_text();
+        dialog_log_ += '\n';
+    }
+
     void warp_now(const Exit& ext) {
         enter_room(ext.dest_room_id, ext.dest_x, ext.dest_y);
     }
 
-    void begin_transition_to(const Exit& ext) {
+    /// Move to an exit's destination, with its transition if it has one. The
+    /// move happens when the transition ends, unless @p move_first.
+    void go_to(const Exit& ext, bool move_first = false) {
         const std::string fx = ext.transition_effect;
         if (fx.empty() || fx == "none" || !is_known_transition(fx)) {
             warp_now(ext);
@@ -667,6 +664,7 @@ struct Engine::Impl {
 
         TransitionFrame start_f, end_f;
         snapshot_room(start_f, current_room_id, avatar_x, avatar_y, avatar_id);
+        if (move_first) warp_now(ext);
 
         const std::string dest = ext.dest_room_id;
         std::string dest_ava = std::string(Game::kAvatarId);
@@ -676,9 +674,10 @@ struct Engine::Impl {
         snapshot_room(end_f, dest, ext.dest_x, ext.dest_y, dest_ava);
 
         gfx_mode = GraphicsMode::Video;
-        transition.begin(start_f, end_f, fx, [this, ext] {
+        transition.begin(start_f, end_f, fx, [this, ext, move_first] {
             gfx_mode = GraphicsMode::Map;
-            warp_now(ext);
+            if (!move_first) warp_now(ext);
+            composed_valid_ = false;
         });
         // First paint.
         std::vector<Color> pal = palette;
@@ -686,132 +685,149 @@ struct Engine::Impl {
         palette = std::move(pal);
     }
 
-    void take_exit(const Exit& ext, bool skip_dialog = false) {
-        const std::string key = exit_key(current_room_id, ext.x, ext.y);
-        auto pages_src = skip_dialog ? std::string{} : dialog_source(ext.dialog_id);
-
-        auto go = [this, ext, key] {
-            if (locked_exits[key]) return;
-            begin_transition_to(ext);
-        };
-
-        if (pages_src.empty()) {
-            go();
-            return;
-        }
-        lock_key = key;
-        lock_is_ending = false;
-        start_dialog(std::move(pages_src), std::move(go), ext.dialog_id);
+    static bool is_locked(const std::shared_ptr<DialogValue>& lock) {
+        // Only `true` itself locks, as in Bitsy (`locked === true`).
+        return lock && lock->kind == DialogValue::Kind::Bool && lock->boolean;
     }
 
-    void trigger_ending(const std::string& ending_id, bool from_script) {
-        const std::string key = from_script
-            ? std::string{"script"}
-            : exit_key(current_room_id, avatar_x, avatar_y);
-
-        std::string src;
-        auto dit = game.dialogues.find(ending_id);
-        if (dit != game.dialogues.end()) src = dit->second.content;
-        else {
-            auto eit = game.endings.find(ending_id);
-            if (eit != game.endings.end()) src = eit->second.text;
+    void take_exit(std::size_t index) {
+        const Exit ext = current_room()->exits[index];
+        auto lock = exit_locks[index];
+        if (!has_dialog(ext.dialog_id)) {
+            go_to(ext);
+            return;
         }
+        start_dialog(dialog_source(ext.dialog_id), ext.dialog_id,
+                     [this, ext, lock] {
+                         if (!is_locked(lock)) go_to(ext);
+                     },
+                     lock);
+    }
 
-        sound.stop_tune();
+    void start_ending(std::size_t index) {
+        const std::string ending_id = current_room()->endings[index].ending_id;
+        auto lock = ending_locks[index];
         narrating = true;
-        lock_key = key;
-        lock_is_ending = true;
+        ending = true;
 
-        auto after = [this, key] {
-            if (locked_endings[key]) {
-                narrating = false;
-                apply_room_tune();
-                return;
-            }
-            ending_hold = true;
-            running = false;
-        };
-
-        if (src.empty() && from_script) {
-            after();
-            return;
+        std::string script_id = ending_id;
+        std::string src = dialog_source(ending_id);
+        auto eit = game.endings.find(ending_id);
+        if (eit != game.endings.end() && (game.dlg_compat || !has_dialog(ending_id))) {
+            // Pre-7.0 endings kept their text in END blocks.
+            script_id = "end_compat_" + ending_id;
+            src = eit->second.text;
         }
-        start_dialog(src.empty() ? std::string{" "} : std::move(src), std::move(after),
-                     ending_id);
+
+        const std::string prev_tune = sound.tune_playing() ? sound.tune_id() : std::string{};
+        sound.stop_tune();
+
+        start_dialog(std::move(src), std::move(script_id),
+                     [this, lock, prev_tune] {
+                         if (!is_locked(lock)) return;
+                         ending = false;
+                         // A cancelled ending starts its music again.
+                         if (!prev_tune.empty() && !sound.tune_playing()) {
+                             if (const Tune* t = game.find_tune(prev_tune)) sound.play_tune(*t);
+                         }
+                     },
+                     lock);
     }
 
-    void handle_item(int index) {
-        auto& items = items_in(current_room_id);
-        if (index < 0 || index >= static_cast<int>(items.size())) return;
+    /// Bitsy runs the item's dialog first and only then takes the item.
+    void pick_up_item(int index) {
+        const auto& items = items_in(current_room_id);
         const RoomItem ri = items[static_cast<std::size_t>(index)];
+        const std::string room_id = current_room_id;
 
         std::string dlg_id = ri.dialog_id;
-        std::string blip_id;
-        if (auto it = game.items.find(ri.item_id); it != game.items.end()) {
-            if (dlg_id.empty()) dlg_id = it->second.dialog_id;
-            blip_id = it->second.blip_id;
-        }
-        if (!blip_id.empty()) {
-            auto bit = game.blips.find(blip_id);
-            if (bit != game.blips.end()) sound.play_blip(bit->second, game);
+        if (auto it = game.items.find(ri.item_id); it != game.items.end() && dlg_id.empty()) {
+            dlg_id = it->second.dialog_id;
         }
 
-        inventory[ri.item_id] += 1;
-        items.erase(items.begin() + index);
-        ++items_generation_;
+        auto take = [this, room_id, index, item_id = ri.item_id] {
+            auto& list = items_in(room_id);
+            if (index < static_cast<int>(list.size())) {
+                list.erase(list.begin() + index);
+                ++items_generation_;
+            }
+            inventory[item_id] += 1;
+        };
 
-        auto src = dialog_source(dlg_id);
-        if (src.empty()) return;
-        start_dialog(std::move(src), {}, dlg_id);
+        if (has_dialog(dlg_id)) {
+            start_dialog(dialog_source(dlg_id), dlg_id, std::move(take), nullptr);
+        } else {
+            take();
+        }
     }
 
-    void handle_sprite(const Sprite& spr) {
-        if (!spr.blip_id.empty()) {
-            auto it = game.blips.find(spr.blip_id);
-            if (it != game.blips.end()) sound.play_blip(it->second, game);
-        }
+    void talk_to(const Sprite& spr) {
         const auto id = sprite_dialog_id(spr);
-        start_dialog(dialog_source(id), {}, id);
+        if (has_dialog(id)) start_dialog(dialog_source(id), id, {}, nullptr);
     }
 
+    /// Bitsy's movePlayer: move (unless a sprite or wall is in the way), then
+    /// item, then ending or exit or sprite. Only one blip plays per step.
     void try_move(Dir direction) {
         if (direction == Dir::None) return;
         if (current_room_id.empty() || !current_room()) return;
-        if (ending_hold || narrating) return;
 
         const int nx = avatar_x + dir_dx(direction);
         const int ny = avatar_y + dir_dy(direction);
 
         const Sprite* bumped = sprite_at(nx, ny);
-        const bool wall = is_wall_at(nx, ny);
-
-        if (!bumped && !wall) {
+        if (!bumped && !is_wall_at(nx, ny)) {
             avatar_x = nx;
             avatar_y = ny;
         }
 
-        const int itm = item_index_at(avatar_x, avatar_y);
-        if (itm >= 0) handle_item(itm);
+        const Room* room = current_room();
+        std::optional<std::size_t> ext;
+        for (std::size_t i = 0; i < room->exits.size(); ++i) {
+            if (room->exits[i].x == avatar_x && room->exits[i].y == avatar_y) {
+                ext = i;
+                break;
+            }
+        }
+        std::optional<std::size_t> end;
+        for (std::size_t i = 0; i < room->endings.size(); ++i) {
+            if (room->endings[i].x == avatar_x && room->endings[i].y == avatar_y) {
+                end = i;
+                break;
+            }
+        }
 
-        if (const EndingRef* end = ending_at(avatar_x, avatar_y)) {
-            trigger_ending(end->ending_id, false);
-        } else if (const Exit* ext = exit_at(avatar_x, avatar_y)) {
+        std::string blip_id;
+        if (const int itm = item_index_at(avatar_x, avatar_y); itm >= 0) {
+            const std::string item_id =
+                items_in(current_room_id)[static_cast<std::size_t>(itm)].item_id;
+            if (auto it = game.items.find(item_id); it != game.items.end()) {
+                blip_id = it->second.blip_id;
+            }
+            pick_up_item(itm);
+        }
+
+        if (end) {
+            start_ending(*end);
+        } else if (ext) {
             take_exit(*ext);
         } else if (bumped) {
-            handle_sprite(*bumped);
+            if (!bumped->blip_id.empty()) blip_id = bumped->blip_id;
+            talk_to(*bumped);
         }
+
+        play_blip_id(blip_id);
     }
 
     void handle_input(Host& host) {
         const bool down = any_action_down(host);
 
         if (dlg.active()) {
-            if (!any_held && down) advance_dialog();
-        } else if (ending_hold) {
-            if (!any_held && down) {
-                running = false;
-            }
-        } else if (!ignore_input && !transition.active()) {
+            // Dialog waits while a blip plays.
+            if (!sound.blip_playing() && !any_held && down) advance_dialog();
+        } else if (ending) {
+            if (!any_held && down) game_over = true;
+        } else if (!ignore_input) {
             const Dir prev = cur_dir;
             cur_dir = read_direction(host);
             if (cur_dir != Dir::None && cur_dir != prev) {
@@ -821,17 +837,17 @@ struct Engine::Impl {
         }
 
         if (!down) ignore_input = false;
-        any_held = down;
 
+        // Releasing Menu restarts the game, as in Bitsy.
         const bool menu = host.button(Button::Menu);
-        if (menu_held && !menu) {
-            running = false;
-        }
+        if (menu_held && !menu) game_over = true;
+
+        any_held = down;
         menu_held = menu;
     }
 
     void hold_repeat(double dt_ms) {
-        if (dlg.active() || ignore_input || ending_hold || transition.active()) return;
+        if (dlg.active() || ending || transition.active()) return;
         if (cur_dir == Dir::None) return;
         hold_timer_ms -= dt_ms;
         if (hold_timer_ms <= 0) {
@@ -841,7 +857,7 @@ struct Engine::Impl {
     }
 
     void tick_animation(double dt_ms) {
-        if (narrating || transition.active()) return;
+        if (narrating || ending || transition.active()) return;
         anim_counter_ms += dt_ms;
         if (anim_counter_ms >= kAnimMs) {
             anim_counter_ms = 0;
@@ -856,7 +872,7 @@ struct Engine::Impl {
             textbox.width = kTextboxWidth;
             textbox.height = kTextboxHeight;
             textbox.x = 12;
-            if (narrating || ending_hold) {
+            if (textbox_centered_) {
                 textbox.y = (kVideoSize / 2) - (kTextboxHeight / 2);
             } else if (avatar_y < kMapSize / 2) {
                 textbox.y = kVideoSize - 12 - kTextboxHeight;
@@ -917,12 +933,7 @@ Engine& Engine::operator=(Engine&&) noexcept = default;
 void Engine::start(Host& host) {
     impl_->running = true;
     impl_->init_runtime();
-    if (!impl_->game.title_dialog.empty()) {
-        impl_->narrating = true;
-        impl_->start_dialog(impl_->game.title_dialog, [this] {
-            impl_->narrating = false;
-        }, std::string(Game::kTitleDialogId));
-    }
+    impl_->start_title();
     host.on_engine_ready();
 }
 
@@ -938,12 +949,16 @@ void Engine::update(Host& host) {
         impl_->handle_input(host);
         impl_->hold_repeat(dt);
         impl_->tick_animation(dt);
-        if (impl_->dlg.active()) impl_->dialog_time_ms += dt;
         impl_->sound.update(dt, impl_->game);
+        // The typewriter waits while a blip plays, as in Bitsy.
+        if (impl_->dlg.active() && !impl_->sound.blip_playing()) impl_->dialog_time_ms += dt;
         impl_->compose();
     }
 
     impl_->do_present(host);
+
+    // After an ending (or a Menu release) Bitsy reloads the game and shows the title.
+    if (impl_->game_over) impl_->restart();
 }
 
 bool Engine::is_running() const noexcept {
@@ -975,7 +990,37 @@ int Engine::inventory_count(std::string_view item_id) const {
     std::string id{item_id};
     if (const Item* it = impl_->game.find_item(item_id)) id = it->id;
     auto found = impl_->inventory.find(id);
-    return found == impl_->inventory.end() ? 0 : found->second;
+    return found == impl_->inventory.end() ? 0 : static_cast<int>(found->second);
+}
+
+std::vector<std::pair<std::string, double>> Engine::inventory() const {
+    std::vector<std::pair<std::string, double>> out;
+    if (!impl_) return out;
+    for (const auto& [id, n] : impl_->inventory) {
+        if (n > 0) out.emplace_back(id, n);
+    }
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+std::vector<std::string> Engine::variable_names() const {
+    std::vector<std::string> out;
+    if (!impl_) return out;
+    for (const auto& [name, v] : impl_->variables) out.push_back(name);
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+std::string Engine::variable_json(std::string_view name) const {
+    if (!impl_) return "null";
+    auto it = impl_->variables.find(std::string(name));
+    if (it == impl_->variables.end()) return "null";
+    return it->second.to_json();
+}
+
+std::string Engine::take_dialog_text() {
+    if (!impl_) return {};
+    return std::exchange(impl_->dialog_log_, {});
 }
 
 std::string Engine::variable(std::string_view name) const {
@@ -986,7 +1031,11 @@ std::string Engine::variable(std::string_view name) const {
 }
 
 bool Engine::ending_active() const noexcept {
-    return impl_ && (impl_->ending_hold || impl_->narrating);
+    return impl_ && impl_->ending;
+}
+
+bool Engine::narrating() const noexcept {
+    return impl_ && impl_->narrating;
 }
 
 int Engine::anim_frame() const noexcept {

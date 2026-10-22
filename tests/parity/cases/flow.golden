@@ -1,0 +1,116 @@
+> start
+room 0 at 2,2
+mode narrating
+dialog open
+> read
+text "flow parity"
+room 0 at 2,2
+mode playing
+dialog -
+inventory -
+> press down right right right right up
+room 0 at 6,2
+mode playing
+dialog open
+> read
+text "Locked."
+room 0 at 6,2
+mode playing
+dialog -
+inventory -
+> press left left left
+room 0 at 3,2
+mode playing
+dialog open
+> read
+text "keys before pickup: 0"
+room 0 at 3,2
+mode playing
+dialog -
+inventory gem=1 key=1
+> press right right right right
+text "The gate opens."
+room 1 at 1,2
+mode playing
+dialog -
+inventory gem=1 key=1
+> read
+room 1 at 1,2
+mode playing
+dialog -
+inventory gem=1 key=1
+> wait 2000
+room 1 at 1,2
+mode playing
+dialog -
+inventory gem=1 key=1
+> press down down
+room 1 at 1,4
+mode ending
+dialog open
+> read
+text "Not yet."
+room 1 at 1,4
+mode playing
+dialog -
+inventory gem=1 key=1
+> press up up right right up
+room 2 at 4,4
+mode playing
+dialog open
+> read
+text "Off you go! Still talking in room 2."
+room 2 at 4,4
+mode playing
+dialog -
+inventory gem=1 key=1
+> wait 3000
+room 2 at 4,4
+mode playing
+dialog -
+inventory gem=1 key=1
+> press left
+room 0 at 2,2
+mode playing
+dialog -
+inventory gem=1 key=1
+> wait 3000
+room 0 at 2,2
+mode playing
+dialog -
+inventory gem=1 key=1
+> press up
+room 0 at 2,2
+mode ending
+dialog open
+> read
+text "Goodbye. This still shows."
+room 0 at 2,2
+mode ending
+dialog -
+inventory gem=1 key=1
+> press ok
+room 0 at 2,2
+mode narrating
+dialog open
+> read
+text "flow parity"
+room 0 at 2,2
+mode playing
+dialog -
+inventory -
+> press down
+room 0 at 2,3
+mode playing
+dialog -
+inventory -
+> press menu
+room 0 at 2,2
+mode narrating
+dialog open
+> read
+text "flow parity"
+room 0 at 2,2
+mode playing
+dialog -
+inventory -
