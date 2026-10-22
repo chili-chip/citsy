@@ -1018,6 +1018,15 @@ std::uint8_t DialogVM::effect_bits() const {
         else if (e.name == "shk") bits |= GlyphFx::Shaky;
         else if (e.name == "rbw") bits |= GlyphFx::Rainbow;
     }
+    // Bitsy applies effects in the order they were turned on, and {rbw} and the
+    // colours all set the glyph colour, so a colour turned on later wins.
+    for (auto it = effects_.rbegin(); it != effects_.rend(); ++it) {
+        if (it->name == "rbw") break;
+        if (it->name.starts_with("clr") || it->name == "_debug_highlight") {
+            bits &= static_cast<std::uint8_t>(~GlyphFx::Rainbow);
+            break;
+        }
+    }
     return bits;
 }
 

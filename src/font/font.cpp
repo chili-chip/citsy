@@ -356,28 +356,11 @@ bool is_page_complete(const std::vector<TextSpan>& spans, int visible_char_count
 
 namespace {
 
-constexpr double kPi = 3.14159265358979323846;
-constexpr double kTwoPi = 2.0 * kPi;
-constexpr double kTwoPiOver3 = 2.0 * kPi / 3.0;
-constexpr double kFourPiOver3 = 4.0 * kPi / 3.0;
-
-// Bitsy font.js: Math.floor(Math.sin(phase) * 127 + 128)
-std::uint8_t rainbow_channel(double phase) {
-    return static_cast<std::uint8_t>(std::floor(std::sin(phase) * 127.0 + 128.0));
-}
-
-Color rainbow_rgb(double phase) {
-    return Color{
-        rainbow_channel(phase),
-        rainbow_channel(phase + kTwoPiOver3),
-        rainbow_channel(phase + kFourPiOver3),
-    };
-}
-
-double rainbow_step(int col, double time_ms) {
-    return time_ms / kTextboxRainbowTimeMs
-        - static_cast<double>(col) * kTextboxRainbowColShift;
-}
+// Bitsy bitsy.js `rainbowColors`.
+constexpr Color kRainbowColors[kTextboxRainbowCount] = {
+    {255, 0, 0},   {255, 217, 0}, {78, 255, 0},  {0, 255, 125}, {0, 192, 255},
+    {0, 18, 255},  {136, 0, 255}, {255, 0, 242}, {255, 0, 138}, {255, 0, 61},
+};
 
 struct Cursor {
     int cx = 0;
@@ -385,6 +368,7 @@ struct Cursor {
     int line_h = 8;
     int page = 0;
     int col = 0;
+    int row = 0;
 };
 
 int max_x_of(const TextboxLayout& layout) {
@@ -405,6 +389,7 @@ bool newline(Cursor& c, const TextboxLayout& layout, int font_h, bool paginate) 
             c.cy = layout.margin;
             c.line_h = font_h;
             c.col = 0;
+            c.row = 0;
             return true;
         }
     }
@@ -412,6 +397,7 @@ bool newline(Cursor& c, const TextboxLayout& layout, int font_h, bool paginate) 
     c.cy = next;
     c.line_h = font_h;
     c.col = 0;
+    ++c.row;
     return false;
 }
 
@@ -483,8 +469,7 @@ void install_textbox_colors(std::span<Color> pal) {
         static_cast<std::size_t>(kTextboxRainbow0 + kTextboxRainbowCount);
     if (pal.size() < rainbow_end) return;
     for (int i = 0; i < kTextboxRainbowCount; ++i) {
-        pal[static_cast<std::size_t>(kTextboxRainbow0 + i)] =
-            rainbow_rgb(kTwoPi * static_cast<double>(i) / kTextboxRainbowCount);
+        pal[static_cast<std::size_t>(kTextboxRainbow0 + i)] = kRainbowColors[i];
     }
 }
 
@@ -494,8 +479,9 @@ void install_textbox_colors(std::vector<Color>& pal) {
 }
 
 std::uint8_t rainbow_index(int col, double time_ms) {
+    // Bitsy RainbowEffect: floor(positiveModulo(time / 100 - col * 0.5, count)).
     const double count = static_cast<double>(kTextboxRainbowCount);
-    double step = rainbow_step(col, time_ms);
+    double step = time_ms / kTextboxRainbowTimeMs - static_cast<double>(col) * 0.5;
     step = step - count * std::floor(step / count);
     int idx = static_cast<int>(std::floor(step));
     if (idx < 0) idx = 0;
@@ -667,6 +653,7 @@ std::vector<std::uint8_t> render_textbox(
         std::uint8_t effects;
         int index;
         int col;
+        int row;
         int offx, offy;
         int printable_i;  ///< sequential printable index; -1 = whitespace
     };
@@ -696,6 +683,7 @@ std::vector<std::uint8_t> render_textbox(
             p.effects = GlyphFx::None;
             p.index = index++;
             p.col = c.col++;
+            p.row = c.row;
             p.offx = 0;
             p.offy = 0;
             place(std::move(p), true);
@@ -731,6 +719,7 @@ std::vector<std::uint8_t> render_textbox(
                 p.effects = sp.effects;
                 p.index = index++;
                 p.col = c.col++;
+                p.row = c.row;
                 p.offx = g.offset_x;
                 p.offy = g.offset_y;
                 place(std::move(p), !is_typewriter_whitespace(cp));
@@ -753,6 +742,7 @@ std::vector<std::uint8_t> render_textbox(
                 p.effects = sp.effects;
                 p.index = index++;
                 p.col = c.col++;
+                p.row = c.row;
                 p.offx = g.offset_x;
                 p.offy = g.offset_y;
                 place(std::move(p), !is_typewriter_whitespace(cp));
@@ -794,18 +784,25 @@ std::vector<std::uint8_t> render_textbox(
             p.printable_i >= layout.visible_char_count) {
             continue;
         }
-        int dx = 0, dy = 0;
+        // Bitsy dialog.js WavyEffect and ShakyEffect add to the offset, which
+        // is rounded down once when the glyph is drawn.
+        double ox = 0, oy = 0;
         std::uint8_t color = p.color < 0
             ? kTextboxWhite
             : static_cast<std::uint8_t>(p.color);
-        if (p.effects & GlyphFx::Wavy) {
-            dy += static_cast<int>(std::sin((t * kTextboxWavySpeed) + p.index * 0.7) * 2.0);
-        }
+        const double col = p.col;
+        const double row = p.row;
         if (p.effects & GlyphFx::Shaky) {
-            const int hsh = static_cast<int>(t / 40.0) + p.index * 13;
-            dx += (hsh % 3) - 1;
-            dy += ((hsh / 3) % 3) - 1;
+            oy += 1.5 * std::sin(t * 0.1 - col * 0.5) * std::cos(t * 0.3 - col * 0.2)
+                * std::sin(t * 2.0 - row * 1.0);
+            ox += 1.5 * std::cos(t * 0.1 - row * 1.0) * std::sin(t * 3.0 - col * 0.7)
+                * std::cos(t * 0.2 - col * 0.3);
         }
+        if (p.effects & GlyphFx::Wavy) {
+            oy += std::sin(t / 250.0 - col / 2.0) * 2.0;
+        }
+        const int dx = static_cast<int>(std::floor(ox));
+        const int dy = static_cast<int>(std::floor(oy));
         if (p.effects & GlyphFx::Rainbow) {
             color = rainbow_index(p.col, t);
         }
@@ -819,12 +816,16 @@ std::vector<std::uint8_t> render_textbox(
     }
 
     if (layout.show_arrow) {
-        const int ax = w - 5;
-        const int ay = h - 4;
-        put(ax, ay, kTextboxWhite);
-        put(ax - 1, ay - 1, kTextboxWhite);
-        put(ax + 1, ay - 1, kTextboxWhite);
-        put(ax, ay - 1, kTextboxWhite);
+        // Bitsy dialog.js DrawNextArrow: a 5x3 arrow, on the left for RTL text.
+        static constexpr std::uint8_t kArrow[3][5] = {
+            {1, 1, 1, 1, 1}, {0, 1, 1, 1, 0}, {0, 0, 1, 0, 0}};
+        const int left = layout.rtl ? 4 : w - (5 + 4);
+        const int top = h - 5;
+        for (int y = 0; y < 3; ++y) {
+            for (int x = 0; x < 5; ++x) {
+                if (kArrow[y][x]) put(left + x, top + y, kTextboxWhite);
+            }
+        }
     }
 
     return buf;

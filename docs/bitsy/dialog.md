@@ -69,9 +69,9 @@ A script runs a page at a time: when the box opens, citsy runs the script up to 
 
 ## Textbox look
 
-The dialog box is always a black rectangle (`kTextboxBlack`). Glyphs are white (`kTextboxWhite`) unless a colour tag or `{rbw}` is active. While dialog is open the engine installs those colours (and 16 rainbow hues at `kTextboxRainbow0`) into the palette passed to `present()`, so hosts can index the textbox buffer without a special case. Rainbow slots use Bitsy's three out-of-phase sines (`sin(phase)*127+128`).
+The dialog box is always a black rectangle (`kTextboxBlack`). Glyphs are white (`kTextboxWhite`) unless a colour tag or `{rbw}` is active. While dialog is open the engine installs those colours (and Bitsy's ten rainbow colours at `kTextboxRainbow0`) into the palette passed to `present()`, so hosts can index the textbox buffer without a special case.
 
-Letters type in one by one (50 ms per printable glyph; spaces and newlines are free). Word wrap is computed against the full page so later characters do not reflow as they appear. The continue arrow shows only after the page is fully revealed; `Ok` (or any action button) skips remaining typing, then a second press advances. While a blip plays, the box waits: typing pauses and `Ok` does nothing, as in Bitsy.
+Letters type in one by one (50 ms per printable glyph; spaces and newlines are free). Word wrap is computed against the full page so later characters do not reflow as they appear. The continue arrow, Bitsy's 5×3 down arrow, shows in the bottom right corner (bottom left for right-to-left text) only after the page is fully revealed; `Ok` (or any action button) skips remaining typing, then a second press advances. While a blip plays, the box waits: typing pauses and `Ok` does nothing, as in Bitsy.
 
 ## Text effects
 
@@ -79,13 +79,23 @@ Letters type in one by one (50 ms per printable glyph; spaces and newlines are f
 
 | Tag | Effect |
 |---|---|
-| `{wvy}` | Vertical sine offset (animated). `{/wvy}` also switches it off |
-| `{shk}` | Jitter offset (animated). `{/shk}` also switches it off |
-| `{rbw}` | Rainbow ink per character. `{/rbw}` also switches it off |
+| `{wvy}` | Each letter bobs up and down by up to 2 pixels. `{/wvy}` also switches it off |
+| `{shk}` | Each letter shakes by up to 1.5 pixels. `{/shk}` also switches it off |
+| `{rbw}` | Letters cycle through ten colours, one step every 100 ms. `{/rbw}` also switches it off |
 | `{clr1}` `{clr2}` `{clr3}` | The room palette's colours 0, 1 and 2 |
 | `{clr n}` ... `{/clr}` | Palette colour `n` |
 
-There is no `{/clr1}`; Bitsy does not know that name, so it does nothing. When several colours are on, the last one switched on wins.
+There is no `{/clr1}`; Bitsy does not know that name, so it does nothing. When several colours are on, the last one switched on wins, and `{rbw}` counts as a colour: `{rbw}{clr2}` shows colour 1, `{clr2}{rbw}` shows the rainbow.
+
+The movement and colours use Bitsy's own formulas (`dialog.js`), with `t` the time since the dialog opened in milliseconds and `col` and `row` the letter's place on the screen:
+
+| Effect | Formula |
+|---|---|
+| `{wvy}` | y + `sin(t/250 - col/2) * 2` |
+| `{shk}` | y + `1.5 * sin(t*0.1 - col*0.5) * cos(t*0.3 - col*0.2) * sin(t*2 - row)`, x + `1.5 * cos(t*0.1 - row) * sin(t*3 - col*0.7) * cos(t*0.2 - col*0.3)` |
+| `{rbw}` | colour `floor((t/100 - col*0.5) mod 10)` |
+
+The offsets add up and are rounded down once.
 
 ---
 

@@ -169,6 +169,150 @@ TEST_CASE("textbox: continue arrow is white", "[font][textbox]") {
     CHECK(count_eq(pix, citsy::kTextboxWhite) >= 4);
 }
 
+/// Bitsy dialog.js `arrowdata`: a 5x3 down arrow.
+constexpr int kArrow[3][5] = {{1, 1, 1, 1, 1}, {0, 1, 1, 1, 0}, {0, 0, 1, 0, 0}};
+
+/// True when exactly Bitsy's arrow is lit with its top-left at (left, top).
+bool arrow_at(const std::vector<std::uint8_t>& pix, int w, int left, int top) {
+    for (int y = 0; y < 3; ++y) {
+        for (int x = 0; x < 5; ++x) {
+            const bool lit =
+                pix[static_cast<std::size_t>((top + y) * w + left + x)] == citsy::kTextboxWhite;
+            if (lit != (kArrow[y][x] == 1)) return false;
+        }
+    }
+    return true;
+}
+
+TEST_CASE("textbox: continue arrow is Bitsy's 5x3 arrow in the bottom right",
+          "[font][textbox][arrow]") {
+    auto f = citsy::default_font();
+    auto layout = box();
+    layout.show_arrow = true;
+    auto pix = citsy::render_textbox(f, {}, layout);
+    // Bitsy: top = height - 5, left = width - (5 + 4).
+    CHECK(arrow_at(pix, 104, 104 - 9, 32 - 5));
+    CHECK(count_eq(pix, citsy::kTextboxWhite) == 9);
+}
+
+TEST_CASE("textbox: right-to-left text puts the arrow on the left",
+          "[font][textbox][arrow][rtl]") {
+    auto f = citsy::default_font();
+    auto layout = box();
+    layout.show_arrow = true;
+    layout.rtl = true;
+    auto pix = citsy::render_textbox(f, {}, layout);
+    CHECK(arrow_at(pix, 104, 4, 32 - 5));
+    CHECK(count_eq(pix, citsy::kTextboxWhite) == 9);
+}
+
+// ---------------------------------------------------------------------------
+// Wavy and shaky offsets (Bitsy dialog.js WavyEffect / ShakyEffect)
+// ---------------------------------------------------------------------------
+
+struct InkOrigin {
+    int x = -1;
+    int y = -1;
+};
+
+/// Top-left corner of every non-black pixel.
+InkOrigin ink_origin(const std::vector<std::uint8_t>& pix, int w = 104, int h = 32) {
+    InkOrigin o{w, h};
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            if (pix[static_cast<std::size_t>(y * w + x)] == citsy::kTextboxBlack) continue;
+            o.x = std::min(o.x, x);
+            o.y = std::min(o.y, y);
+        }
+    }
+    return o;
+}
+
+/// How far @p fx moves @p text at @p time_ms, measured from the plain render.
+InkOrigin fx_shift(const std::string& text, std::uint8_t fx, double time_ms) {
+    auto f = citsy::default_font();
+    auto layout = box();
+    layout.time_ms = time_ms;
+    const auto plain = ink_origin(citsy::render_textbox(f, {span(text)}, layout));
+    const auto moved = ink_origin(citsy::render_textbox(f, {span(text, fx)}, layout));
+    return {moved.x - plain.x, moved.y - plain.y};
+}
+
+TEST_CASE("textbox: {wvy} moves a glyph by floor(sin(t/250 - col/2) * 2)",
+          "[font][textbox][fx][wvy]") {
+    // t = 400: sin(1.6) * 2 = 1.999 -> 1.
+    auto a = fx_shift("I", citsy::GlyphFx::Wavy, 400);
+    CHECK(a.x == 0);
+    CHECK(a.y == 1);
+    // t = 1000: sin(4) * 2 = -1.51 -> -2 (floor, not truncation).
+    auto b = fx_shift("I", citsy::GlyphFx::Wavy, 1000);
+    CHECK(b.x == 0);
+    CHECK(b.y == -2);
+}
+
+TEST_CASE("textbox: {wvy} phase follows the glyph's column",
+          "[font][textbox][fx][wvy]") {
+    auto f = citsy::default_font();
+    auto layout = box();
+    layout.time_ms = 0;
+    // Column 1 at t = 0: sin(-0.5) * 2 = -0.96 -> -1. Column 0 stays put.
+    auto plain = citsy::render_textbox(f, {span("I"), span("I")}, layout);
+    auto wavy = citsy::render_textbox(
+        f, {span("I"), span("I", citsy::GlyphFx::Wavy)}, layout);
+    CHECK(ink_origin(wavy).y == ink_origin(plain).y - 1);
+}
+
+TEST_CASE("textbox: {shk} uses Bitsy's shake formula", "[font][textbox][fx][shk]") {
+    // Expected values from dialog.js ShakyEffect, row 0, column 0.
+    auto a = fx_shift("I", citsy::GlyphFx::Shaky, 10);
+    CHECK(a.x == 0);
+    CHECK(a.y == -2);
+    auto b = fx_shift("I", citsy::GlyphFx::Shaky, 123);
+    CHECK(b.x == -2);
+    CHECK(b.y == -1);
+    auto c = fx_shift("I", citsy::GlyphFx::Shaky, 33);
+    CHECK(c.x == 1);
+    CHECK(c.y == -1);
+}
+
+TEST_CASE("textbox: {shk} phase follows the glyph's row", "[font][textbox][fx][shk]") {
+    // Row 1, column 0, t = 50: x -1, y -2 (row 0 would be x 0, y -1).
+    auto s = fx_shift("\nI", citsy::GlyphFx::Shaky, 50);
+    CHECK(s.x == -1);
+    CHECK(s.y == -2);
+}
+
+TEST_CASE("textbox: {wvy} and {shk} offsets add before rounding down",
+          "[font][textbox][fx]") {
+    // t = 400: shake y 0.813 + wave y 1.999 = 2.81 -> 2; shake x -0.010 -> -1.
+    const auto both = static_cast<std::uint8_t>(citsy::GlyphFx::Wavy | citsy::GlyphFx::Shaky);
+    auto s = fx_shift("I", both, 400);
+    CHECK(s.x == -1);
+    CHECK(s.y == 2);
+}
+
+TEST_CASE("textbox: rainbow uses Bitsy's ten colours, one step per 100 ms",
+          "[font][textbox][rbw]") {
+    CHECK(citsy::kTextboxRainbowCount == 10);
+    // floor(posMod(t / 100 - col * 0.5, 10))
+    CHECK(citsy::rainbow_index(0, 0) == citsy::kTextboxRainbow0);
+    CHECK(citsy::rainbow_index(0, 100) == citsy::kTextboxRainbow0 + 1);
+    CHECK(citsy::rainbow_index(0, 950) == citsy::kTextboxRainbow0 + 9);
+    CHECK(citsy::rainbow_index(0, 1000) == citsy::kTextboxRainbow0);
+    CHECK(citsy::rainbow_index(1, 0) == citsy::kTextboxRainbow0 + 9);
+    CHECK(citsy::rainbow_index(3, 0) == citsy::kTextboxRainbow0 + 8);
+
+    std::vector<citsy::Color> pal;
+    citsy::install_textbox_colors(pal);
+    const citsy::Color bitsy[10] = {
+        {255, 0, 0},   {255, 217, 0}, {78, 255, 0},  {0, 255, 125}, {0, 192, 255},
+        {0, 18, 255},  {136, 0, 255}, {255, 0, 242}, {255, 0, 138}, {255, 0, 61},
+    };
+    for (int i = 0; i < 10; ++i) {
+        CHECK(pal[static_cast<std::size_t>(citsy::kTextboxRainbow0 + i)] == bitsy[i]);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Rainbow
 // ---------------------------------------------------------------------------
@@ -245,8 +389,8 @@ TEST_CASE("install_textbox_colors fills reserved slots", "[font][textbox]") {
     CHECK(pal[0].r == 10);
     CHECK(pal[citsy::kTextboxBlack] == citsy::Color{0, 0, 0});
     CHECK(pal[citsy::kTextboxWhite] == citsy::Color{255, 255, 255});
-    CHECK(pal[citsy::kTextboxRainbow0] == citsy::Color{128, 237, 18});
-    CHECK(pal[citsy::kTextboxRainbow0 + 8] == citsy::Color{128, 18, 237});
+    CHECK(pal[citsy::kTextboxRainbow0] == citsy::Color{255, 0, 0});
+    CHECK(pal[citsy::kTextboxRainbow0 + 9] == citsy::Color{255, 0, 61});
     CHECK(citsy::rainbow_index(0, 0) == citsy::kTextboxRainbow0);
 }
 
@@ -324,12 +468,33 @@ TEST_CASE("dialog vm: default color is unset (white) until {clr}",
     CHECK(vm.spans()[2].color == -1);
 }
 
-TEST_CASE("dialog vm: {rbw} and {clr2} can stack", "[dialog][textbox][fx]") {
+TEST_CASE("dialog vm: {clr2} switched on after {rbw} wins, as in Bitsy",
+          "[dialog][textbox][fx]") {
+    // Bitsy applies effects in the order they were switched on, and both set
+    // the glyph colour, so the later one wins.
     citsy::DialogVM vm;
     vm.start("{rbw}{clr2}X", {});
     REQUIRE_FALSE(vm.spans().empty());
-    CHECK(vm.spans()[0].effects == citsy::GlyphFx::Rainbow);
+    CHECK(vm.spans()[0].effects == citsy::GlyphFx::None);
     CHECK(vm.spans()[0].color == 1);
+}
+
+TEST_CASE("dialog vm: {rbw} switched on after {clr2} wins, as in Bitsy",
+          "[dialog][textbox][fx]") {
+    citsy::DialogVM vm;
+    vm.start("{clr2}{rbw}X", {});
+    REQUIRE_FALSE(vm.spans().empty());
+    CHECK(vm.spans()[0].effects == citsy::GlyphFx::Rainbow);
+}
+
+TEST_CASE("dialog vm: switching the later colour off brings back the earlier one",
+          "[dialog][textbox][fx]") {
+    citsy::DialogVM vm;
+    vm.start("{clr2}{rbw}A{rbw}B", {});
+    REQUIRE(vm.spans().size() >= 2);
+    CHECK(vm.spans()[0].effects == citsy::GlyphFx::Rainbow);
+    CHECK(vm.spans()[1].effects == citsy::GlyphFx::None);
+    CHECK(vm.spans()[1].color == 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -653,7 +818,7 @@ TEST_CASE("engine: open dialog installs black white and rainbow palette slots",
     REQUIRE(snap->palette.size() >= 256);
     CHECK(snap->palette[citsy::kTextboxBlack] == citsy::Color{0, 0, 0});
     CHECK(snap->palette[citsy::kTextboxWhite] == citsy::Color{255, 255, 255});
-    CHECK(snap->palette[citsy::kTextboxRainbow0] == citsy::Color{128, 237, 18});
+    CHECK(snap->palette[citsy::kTextboxRainbow0] == citsy::Color{255, 0, 0});
     CHECK(count_eq(snap->textbox_pixels, citsy::kTextboxBlack) > 100);
     CHECK(count_eq(snap->textbox_pixels, citsy::kTextboxWhite) > 10);
 }
@@ -667,7 +832,7 @@ TEST_CASE("engine: rainbow dialog paints reserved indices",
     auto* snap = host.last_snapshot();
     REQUIRE(snap != nullptr);
     CHECK(rainbow_ink(snap->textbox_pixels) > 20);
-    CHECK(count_eq(snap->textbox_pixels, citsy::kTextboxWhite) <= 4);
+    CHECK(count_eq(snap->textbox_pixels, citsy::kTextboxWhite) <= 9);  // only the continue arrow
 }
 
 TEST_CASE("engine: rainbow animation changes pixels over time",
@@ -687,12 +852,7 @@ TEST_CASE("engine: rainbow animation changes pixels over time",
 }
 
 bool continue_arrow_lit(const std::vector<std::uint8_t>& pix, int w, int h) {
-    const int ax = w - 5;
-    const int ay = h - 4;
-    auto at = [&](int x, int y) {
-        return pix[static_cast<std::size_t>(y * w + x)] == citsy::kTextboxWhite;
-    };
-    return at(ax, ay) && at(ax - 1, ay - 1) && at(ax + 1, ay - 1) && at(ax, ay - 1);
+    return arrow_at(pix, w, w - 9, h - 5);
 }
 
 TEST_CASE("engine: typewriter reveals letters over time",
