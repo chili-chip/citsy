@@ -240,7 +240,7 @@ Modules inside the core library:
 | `engine/` | Main loop, avatar movement, collision, room transitions |
 | `dialog/` | Script interpreter: variables, conditionals, lists, `{print*}`, `{ava}`/`{pal}`/`{exit}`/`{end}` |
 | `render/` | Logical renderer — fills video/map/textbox memory blocks (no GPU) |
-| `font/` | Built-in `ascii_small` and custom `.bitsyfont` glyph rendering into textbox buffer |
+| `font/` | Bitsy's built-in fonts, custom `.bitsyfont` glyph rendering into textbox buffer, Arabic letter joining |
 | `sound/` | Two-channel square-wave parameter generation (blips + tunes) |
 | `transition/` | Room transition effects (fade, wave, tunnel, slide) in video mode |
 
@@ -258,11 +258,11 @@ Dialog is not just text — it is Bitsy's lightweight game logic language. The e
 - **Text lines** and `{print …}` / `{say …}` expressions
 - **Variable assignment** — `{name = value}`, `{count = count + 1}`
 - **Conditionals and lists** — `{sequence}` / `{cycle}` / `{shuffle}` and `- cond ?` / `- else`
-- **Actions** — `{item}`, `{ava}`, `{pal}`, `{tune}`, `{blip}`, `{exit}`, `{end}`, `{lock}` / `{property locked}`
+- **Actions** — `{item}`, `{ava}`, `{pal}`, `{tune}`, `{blip}`, `{exit}`, `{end}`, `{property locked}`
 - **Drawings** — `{printSprite}`, `{printTile}`, `{printItem}`
 - **Effects** — `{wvy}`, `{shk}`, `{rbw}`, `{clr}` / `{clr1}` / `{clr2}` / `{clr3}`
 
-Scripts are parsed from `DLG` segments in game data. citsy implements the same expression grammar as the reference engine for supported versions.
+Scripts are parsed from `DLG` segments in game data. `src/dialog/script.cpp` is a port of Bitsy 8.15's `script.js`, and `tests/parity` plays the same games in the Bitsy engine and in citsy to check they match.
 
 ---
 
@@ -322,7 +322,7 @@ citsy/
 │   ├── engine/             # Simulation & game loop
 │   ├── dialog/             # Script interpreter
 │   ├── render/             # Logical framebuffer compositor
-│   ├── font/               # .bitsyfont + ascii_small
+│   ├── font/               # .bitsyfont + Bitsy's built-in fonts
 │   ├── sound/              # Blips and tunes → channel params
 │   └── transition/         # Exit transition effects
 ├── backends/
@@ -469,4 +469,4 @@ Compatibility fixtures will be drawn from the [Bitsy community](https://bitsy.or
 
 citsy is released under the [MIT License](LICENSE).
 
-The built-in `ascii_small` font data is derived from [Bitsy](https://codeberg.org/adamledoux/bitsy), also MIT licensed; its copyright notice is kept in [LICENSE](LICENSE). Games you create with the Bitsy editor remain yours.
+The built-in font data is derived from [Bitsy](https://codeberg.org/adamledoux/bitsy), also MIT licensed; its copyright notice is kept in [LICENSE](LICENSE). Games you create with the Bitsy editor remain yours.

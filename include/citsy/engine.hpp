@@ -7,6 +7,8 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace citsy {
 
@@ -86,7 +88,8 @@ public:
     /// @pre start() must have been called.
     void update(Host& host);
 
-    /// True while the game is running (not yet ended or stopped).
+    /// True once start() has run. Like Bitsy, the game never stops by itself:
+    /// after an ending, or when Menu is released, it restarts from the title.
     [[nodiscard]] bool is_running() const noexcept;
 
     // -----------------------------------------------------------------------
@@ -105,6 +108,10 @@ public:
     /// Text of the current dialog page, or empty if no dialog is open.
     [[nodiscard]] std::string_view dialog_line() const noexcept;
 
+    /// All text dialogs have shown since the last call, a page per line, with
+    /// no screen layout (for tests and tools).
+    [[nodiscard]] std::string take_dialog_text();
+
     /// How many of @p item_id the avatar currently holds (id or NAME).
     [[nodiscard]] int inventory_count(std::string_view item_id) const;
 
@@ -121,8 +128,21 @@ public:
         return variable(name);
     }
 
-    /// True after an ending has been triggered (game will stop when dismissed).
+    /// True after an ending has been reached. The next button press (once its
+    /// text is over) restarts the game, as in Bitsy.
     [[nodiscard]] bool ending_active() const noexcept;
+
+    /// True while the title or an ending is shown over a cleared screen.
+    [[nodiscard]] bool narrating() const noexcept;
+
+    /// Items the avatar holds (count above 0), sorted by item id.
+    [[nodiscard]] std::vector<std::pair<std::string, double>> inventory() const;
+
+    /// Names of all script variables, sorted.
+    [[nodiscard]] std::vector<std::string> variable_names() const;
+
+    /// A variable's value as JSON (`1`, `true`, `"text"`, `null` when unset).
+    [[nodiscard]] std::string variable_json(std::string_view name) const;
 
     /// Current flipbook animation frame index (advances every 400 ms).
     [[nodiscard]] int anim_frame() const noexcept;

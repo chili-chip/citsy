@@ -1,0 +1,22 @@
+# Sound: tunes with and without a key, an arpeggio, held notes, a blip in a
+# melody, blips on a sprite and an item, {tune} and {blip} in dialog, and an
+# exit transition. Each line in the trace is a frame where a channel changed.
+game ../games/sound.bitsy
+trace output
+read                         # title; tune 1 plays
+press right                  # the cat: its blip pauses the tune
+read
+press left                   # the bell: item blip
+press right down             # exit with fade_w into room 1; tune 2 with an arpeggio
+press right                  # {tune "3"}
+read
+press right                  # {tune "0"}
+read
+press right                  # {blip "3"}, a repeating blip
+read
+press right                  # {tune "2"}
+read
+press right                  # {blip "4"}: BEAT 0 0 plays the last pitch
+read
+press right                  # {blip "5"}: BEAT 0 0 with repeat has no pitch
+read

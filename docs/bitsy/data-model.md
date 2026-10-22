@@ -128,7 +128,7 @@ my game title
 
 | Directive | Maps to |
 |---|---|
-| First line (before `#` / `!` / segments) | `title`, `title_dialog`, `dialogues["title"]` |
+| Line 0, whatever it holds (Bitsy then skips line 1) | `title`, `title_dialog`, `dialogues["title"]` |
 | `# BITSY VERSION X.Y` | `version.major`, `version.minor` |
 | `NAME <title>` | `title` (top-level fallback) |
 | `! ROOM_FORMAT 1` | `room_format = 1` (comma-separated room rows) |
@@ -477,21 +477,27 @@ A script attached to sprites, items, or exits. Dialog is Bitsy's lightweight gam
 
 ```
 DLG DLG_0
-"Hello, world!"
-"Press OK to continue."
+Hello, world!
+NAME greeting
+
+DLG DLG_1
+"""
+Hello, world!
+Press OK to continue.
+"""
 ```
 
-Multiline content is stored with newline separators. The script may include:
+A dialog is one line, or a block from a `"""` line to the next `"""` line (kept in `content`, as Bitsy keeps it). An optional `NAME` line follows. The script may include:
 
 | Feature | Example syntax | Status in citsy |
 |---|---|---|
-| Text lines | `"Hello!"` | Yes |
-| Variable interpolation | `{print name}` / `{name}` | Yes |
+| Text lines | `Hello!` (quotes print as written) | Yes |
+| Printing a value | `{say name}` / `{print name}` | Yes |
 | Assignment | `{score = 5}` | Yes |
-| Conditionals | `{score}?` … `{else}` `{/}` | Yes (list form) |
+| Conditionals | `- score > 1 ?` … `- else ?` | Yes |
 | Sequence / cycle / shuffle lists | `{sequence` / `{cycle` / `{shuffle` | Yes |
 | Item actions | `{item id}` / `{item id n}` | Yes |
-| Exit / end / lock | `{exit}` `{end}` `{lock}` | Yes |
+| Exit / end / lock | `{exit}` `{end}` `{property locked true}` | Yes |
 | Avatar / palette / tune / blip | `{ava}` `{pal}` `{tune}` `{blip}` | Yes |
 | Drawings in dialog | `{printSprite}` `{printTile}` `{printItem}` | Yes |
 | Text effects | `{wvy}` `{shk}` `{rbw}` `{clr}` | Yes |
@@ -519,13 +525,13 @@ VAR name
 ada
 ```
 
-Values are stored as strings. The runtime distinguishes numeric and string variables by whether the value parses as a number. Dialog scripts use variables for branching, counters, and state tracking.
+The value is the next line, as written. At runtime it becomes `true` or `false`, else a number when it starts with one (JavaScript `parseFloat`), else text, as in Bitsy. Dialog scripts use variables for branching, counters, and state tracking.
 
 ---
 
 ## `Ending`
 
-The message displayed when the player reaches a game ending.
+A pre-7.0 ending message. Since Bitsy 7 an ending's text is the `DLG` with the ending's id; citsy uses an `END` block when the game is in `DLG_COMPAT` mode or has no such `DLG`.
 
 | Property | C++ type | Description |
 |---|---|---|
@@ -538,11 +544,10 @@ The message displayed when the player reaches a game ending.
 ```
 END 0
 You found the treasure!
-Congratulations!
 NAME good ending
 ```
 
-Text lines come first; an optional `NAME` sub-key at the end sets the display name.
+One line or a `"""` block, like `DLG`, then an optional `NAME` line.
 
 ---
 
@@ -615,7 +620,7 @@ Quick lookup of top-level `.bitsy` segment keywords:
 | `VAR` | Variable | name | `VAR score` |
 | `END` | Ending | string | `END 0` |
 | `FONT` | Custom font | — | Parsed (`.bitsyfont`) |
-| `DEFAULT_FONT` | Font name | — | `ascii_small` if omitted |
+| `DEFAULT_FONT` | Font name | — | `ascii_small` if omitted. `ascii_small`, `unicode_european_small`, `unicode_european_large` and `arabic` are built in; `unicode_asian` is not supported and falls back to `ascii_small` |
 | `TEXT_DIRECTION` | `LTR` / `RTL` | — | Right-to-left dialog layout |
 | `TUNE` | Music | string | Melody + harmony bars. See [Sound](sound.md) |
 | `BLIP` | Sound effect | string | Pitches, envelope, pulse. See [Sound](sound.md) |
@@ -691,7 +696,7 @@ See `tests/data/minimal.bitsy` for a complete game using every entity type. Afte
 | Room | `0` | 16×16 grid, item at (4,4), ending at (8,0) |
 | Sprite | `A` | Avatar at room `0`, position (8,8) |
 | Item | `0` | Key with dialog `DLG_0` |
-| Dialogue | `DLG_0` | `"Hello, world!"` |
+| Dialogue | `DLG_0` | `Hello, world!` |
 | Variable | `score` | Initial value `"0"` |
 | Ending | `0` | `"You found the treasure!"` |
 

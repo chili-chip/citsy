@@ -1,6 +1,6 @@
-# BITSY VERSION 8.12
+scripted
 
-NAME scripted
+# BITSY VERSION 8.12
 
 ! ROOM_FORMAT 1
 
@@ -73,17 +73,18 @@ VAR met
 0
 
 DLG DLG_GUARD
-{met = 1}
-{
+"""
+{met = 1}{
   - {item "0"} > 0 ?
-    "Go on through."
+    Go on through.
   - else ?
-    "I need a key."
+    I need a key.
 }
+"""
 
 DLG DLG_KEY
-"Got a key."
+Got a key.
 
-END 0
+DLG 0
 You found the way out.
 NAME escape

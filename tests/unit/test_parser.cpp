@@ -30,12 +30,19 @@ static std::string load_fixture(const char* name) {
     return buf.str();
 }
 
+// Line 0 of a .bitsy file is always the title (and Bitsy skips line 1), so
+// segment snippets get a title in front.
+static citsy::Game parse_body(std::string_view body) {
+    return citsy::parse("test\n\n" + std::string(body));
+}
+
 // ===========================================================================
 // Version & metadata
 // ===========================================================================
 
 TEST_CASE("parser: version header", "[parser]") {
-    constexpr std::string_view src = R"(
+    constexpr std::string_view src = R"(my game
+
 # BITSY VERSION 8.12
 
 PAL 0
@@ -61,11 +68,10 @@ POS 0 0,0
     CHECK(game.version.minor == 12);
 }
 
-TEST_CASE("parser: game title from NAME directive", "[parser]") {
-    constexpr std::string_view src = R"(
-# BITSY VERSION 8.12
-
-NAME my cool game
+TEST_CASE("parser: line 0 is the title even when it looks like a comment", "[parser]") {
+    // Bitsy reads line 0 as the title and skips line 1, whatever they hold.
+    constexpr std::string_view src = R"(# BITSY VERSION 8.12
+! ROOM_FORMAT 1
 
 PAL 0
 NAME pal
@@ -74,7 +80,10 @@ NAME pal
 128,128,255
 )";
     auto game = citsy::parse(src);
-    CHECK(game.title == "my cool game");
+    CHECK(game.title == "# BITSY VERSION 8.12");
+    CHECK(game.title_dialog == "# BITSY VERSION 8.12");
+    CHECK(game.version.major == 0);
+    CHECK(game.palettes.count("0") == 1);
 }
 
 TEST_CASE("parser: room_format directive", "[parser]") {
@@ -89,7 +98,7 @@ NAME pal
 255,255,255
 128,128,255
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     CHECK(game.room_format == 1);
 }
 
@@ -105,7 +114,7 @@ NAME test palette
 128,159,255
 255,255,255
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.palettes.count("0") == 1);
     const auto& pal = game.palettes.at("0");
     CHECK(pal.id == "0");
@@ -130,7 +139,7 @@ NAME second
 40,50,60
 70,80,90
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     CHECK(game.palettes.size() == 2);
     CHECK(game.palettes.count("0") == 1);
     CHECK(game.palettes.count("1") == 1);
@@ -155,7 +164,7 @@ TIL a
 NAME wall
 WAL true
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.tiles.count("a") == 1);
     const auto& tile = game.tiles.at("a");
     CHECK(tile.id == "a");
@@ -189,7 +198,7 @@ TIL 0
 NAME background
 WAL false
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.tiles.count("0") == 1);
     CHECK(game.tiles.at("0").is_wall == false);
 }
@@ -216,7 +225,7 @@ TIL b
 00000000
 NAME blink
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.tiles.count("b") == 1);
     const auto& tile = game.tiles.at("b");
     REQUIRE(tile.frames.size() == 2);
@@ -242,7 +251,7 @@ TIL c
 COL 2
 NAME gem
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.tiles.count("c") == 1);
     CHECK(game.tiles.at("c").color_index == 2);
 }
@@ -265,7 +274,7 @@ SPR A
 NAME Avatar
 POS 0 4,7
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.sprites.count("A") == 1);
     const auto& spr = game.sprites.at("A");
     CHECK(spr.name == "Avatar");
@@ -291,7 +300,7 @@ NAME cat
 POS 2 3,5
 DLG DLG_1
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.sprites.count("0") == 1);
     const auto& spr = game.sprites.at("0");
     CHECK(spr.dialog_id == "DLG_1");
@@ -318,7 +327,7 @@ ITM 0
 NAME key
 DLG DLG_0
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.items.count("0") == 1);
     const auto& itm = game.items.at("0");
     CHECK(itm.name == "key");
@@ -345,7 +354,7 @@ TEST_CASE("parser: room tile grid (comma-separated)", "[parser][room]") {
     }
     src += "NAME test room\nPAL 0\n";
 
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.rooms.count("0") == 1);
     const auto& room = game.rooms.at("0");
     CHECK(room.name == "test room");
@@ -365,7 +374,7 @@ TEST_CASE("parser: room items", "[parser][room]") {
     }
     src += "NAME r\nPAL 0\nITM 0 5,3\n";
 
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.rooms.count("0") == 1);
     const auto& room = game.rooms.at("0");
     REQUIRE(room.items.size() == 1);
@@ -383,7 +392,7 @@ TEST_CASE("parser: room exits", "[parser][room]") {
     }
     src += "NAME r\nPAL 0\nEXT 15,8 1 0,8\n";
 
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.rooms.count("0") == 1);
     const auto& room = game.rooms.at("0");
     REQUIRE(room.exits.size() == 1);
@@ -403,7 +412,7 @@ TEST_CASE("parser: room ending references", "[parser][room]") {
     }
     src += "NAME r\nPAL 0\nEND 0 8,0\n";
 
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     const auto& room = game.rooms.at("0");
     REQUIRE(room.endings.size() == 1);
     CHECK(room.endings[0].ending_id == "0");
@@ -420,23 +429,40 @@ TEST_CASE("parser: dialogue content", "[parser][dialogue]") {
 DLG DLG_0
 "Hello, world!"
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.dialogues.count("DLG_0") == 1);
     CHECK(game.dialogues.at("DLG_0").content == "\"Hello, world!\"");
 }
 
-TEST_CASE("parser: multiline dialogue", "[parser][dialogue]") {
+TEST_CASE("parser: dialogue is one line unless it is a block", "[parser][dialogue]") {
+    // Bitsy's ReadDialogScript: one line, then an optional NAME line. Other
+    // lines that follow are not part of the dialog.
     constexpr std::string_view src = R"(
 DLG DLG_1
-"Line one."
-"Line two."
+Line one.
+NAME greeting
+Line two.
+
+DLG DLG_2
+"""
+Line one.
+Line two.
+"""
+NAME block
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.dialogues.count("DLG_1") == 1);
-    const auto& dlg = game.dialogues.at("DLG_1");
-    // Content should preserve both lines.
-    CHECK(dlg.content.find("Line one") != std::string::npos);
-    CHECK(dlg.content.find("Line two") != std::string::npos);
+    CHECK(game.dialogues.at("DLG_1").content == "Line one.");
+    CHECK(game.dialogues.at("DLG_1").name == "greeting");
+    REQUIRE(game.dialogues.count("DLG_2") == 1);
+    CHECK(game.dialogues.at("DLG_2").content == "\"\"\"\nLine one.\nLine two.\n\"\"\"");
+    CHECK(game.dialogues.at("DLG_2").name == "block");
+}
+
+TEST_CASE("parser: variable value is the next line as written", "[parser][variable]") {
+    constexpr std::string_view src = "VAR padded\n  two words \n";
+    auto game = parse_body(src);
+    CHECK(game.variables.at("padded").value == "  two words ");
 }
 
 // ===========================================================================
@@ -448,7 +474,7 @@ TEST_CASE("parser: numeric variable", "[parser][variable]") {
 VAR score
 0
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.variables.count("score") == 1);
     CHECK(game.variables.at("score").value == "0");
 }
@@ -458,7 +484,7 @@ TEST_CASE("parser: string variable", "[parser][variable]") {
 VAR name
 ada
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.variables.count("name") == 1);
     CHECK(game.variables.at("name").value == "ada");
 }
@@ -476,7 +502,7 @@ hello
 world
 """
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.dialogues.count("DLG_0") == 1);
     const auto& c = game.dialogues.at("DLG_0").content;
     CHECK(c.find("hello") != std::string::npos);
@@ -489,7 +515,7 @@ END 0
 You found the treasure!
 NAME good ending
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.endings.count("0") == 1);
     const auto& end = game.endings.at("0");
     CHECK(end.text == "You found the treasure!");
@@ -506,7 +532,7 @@ good luck
 """
 NAME good ending
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     REQUIRE(game.endings.count("0") == 1);
     CHECK(game.endings.at("0").text.find("it's a big world") != std::string::npos);
     CHECK(game.endings.at("0").text.find("good luck") != std::string::npos);
@@ -531,7 +557,7 @@ SPR A
 NAME Avatar
 POS 0 4,4
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     const auto* av = game.avatar();
     REQUIRE(av != nullptr);
     CHECK(av->id == "A");
@@ -551,7 +577,7 @@ SPR A
 NAME Avatar
 POS 3 2,2
 )";
-    auto game = citsy::parse(src);
+    auto game = parse_body(src);
     CHECK(game.start_room_id() == "3");
 }
 
@@ -571,7 +597,7 @@ TIL x
 10000001
 11111111
 )";
-    CHECK_THROWS_AS(citsy::parse(src), citsy::ParseError);
+    CHECK_THROWS_AS(parse_body(src), citsy::ParseError);
 }
 
 TEST_CASE("parser: incomplete tile frame throws", "[parser][errors]") {
@@ -581,7 +607,7 @@ TIL x
 10000001
 10000001
 )";
-    CHECK_THROWS_AS(citsy::parse(src), citsy::ParseError);
+    CHECK_THROWS_AS(parse_body(src), citsy::ParseError);
 }
 
 TEST_CASE("parser: bad palette color throws", "[parser][errors]") {
@@ -590,7 +616,7 @@ PAL 0
 NAME bad
 0,82,300
 )";
-    CHECK_THROWS_AS(citsy::parse(src), citsy::ParseError);
+    CHECK_THROWS_AS(parse_body(src), citsy::ParseError);
 }
 
 // ===========================================================================

@@ -1,0 +1,279 @@
+script parity
+{clr2}two{clr2} lines of title
+
+# BITSY VERSION 8.15
+
+! VER_MAJ 8
+! VER_MIN 15
+! ROOM_FORMAT 1
+! DLG_COMPAT 0
+! TXT_MODE 0
+
+PAL 0
+NAME day
+20,40,120
+200,200,255
+255,255,100
+
+PAL 1
+NAME night
+0,0,0
+80,80,160
+255,255,255
+
+ROOM 0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+w,w,w,w,w,w,w,w,w,w,w,w,w,w,w,w
+NAME hall
+PAL 0
+
+TIL w
+11111111
+11111111
+11111111
+11111111
+11111111
+11111111
+11111111
+11111111
+NAME wall
+WAL true
+
+TIL t
+00111100
+01000010
+10100101
+10000001
+10100101
+10011001
+01000010
+00111100
+NAME face
+
+SPR A
+11111111
+11111111
+11111111
+11111111
+11111111
+11111111
+11111111
+11111111
+NAME player
+POS 0 1,2
+
+SPR 1
+00111100
+01000010
+10100101
+10000001
+10100101
+10011001
+01000010
+00111100
+NAME npc1
+POS 0 1,1
+DLG DLG_MATH
+
+SPR 2
+00111100
+01000010
+10100101
+10000001
+10100101
+10011001
+01000010
+00111100
+NAME npc2
+POS 0 2,1
+DLG DLG_SEQ
+
+SPR 3
+00111100
+01000010
+10100101
+10000001
+10100101
+10011001
+01000010
+00111100
+NAME npc3
+POS 0 3,1
+DLG DLG_CYC
+
+SPR 4
+00111100
+01000010
+10100101
+10000001
+10100101
+10011001
+01000010
+00111100
+NAME npc4
+POS 0 4,1
+DLG DLG_SHUF
+
+SPR 5
+00111100
+01000010
+10100101
+10000001
+10100101
+10011001
+01000010
+00111100
+NAME npc5
+POS 0 5,1
+DLG DLG_COND
+
+SPR 6
+00111100
+01000010
+10100101
+10000001
+10100101
+10011001
+01000010
+00111100
+NAME npc6
+POS 0 6,1
+DLG DLG_FX
+
+SPR 7
+00111100
+01000010
+10100101
+10000001
+10100101
+10011001
+01000010
+00111100
+NAME npc7
+POS 0 7,1
+DLG DLG_WORLD
+
+SPR 8
+00111100
+01000010
+10100101
+10000001
+10100101
+10011001
+01000010
+00111100
+NAME npc8
+POS 0 8,1
+DLG DLG_ITEMS
+
+SPR 9
+00111100
+01000010
+10100101
+10000001
+10100101
+10011001
+01000010
+00111100
+NAME npc9
+POS 0 9,1
+DLG DLG_VARS
+
+SPR 10
+00111100
+01000010
+10100101
+10000001
+10100101
+10011001
+01000010
+00111100
+NAME npc10
+POS 0 10,1
+DLG DLG_LONG
+
+ITM 0
+00111100
+01000010
+10100101
+10000001
+10100101
+10011001
+01000010
+00111100
+NAME key
+
+DLG DLG_MATH
+{a = 10 - 3 + 2}{b = 5 / 2}{c = "x" + 1}{d = 1 == "1"}{e = 3 > 2}{f = 0.1 + 0.2}{g = 7 * 6 - 2}a={say a} b={say b} c={say c} f={say f}
+
+DLG DLG_SEQ
+"""
+{sequence
+  - first
+  - second{n = n + 1}
+  - third and last
+}
+"""
+
+DLG DLG_CYC
+"""
+{cycle
+  - ping
+  - pong
+}
+"""
+
+DLG DLG_SHUF
+"""
+{shuffle
+  - red
+  - green
+  - blue
+}
+"""
+
+DLG DLG_COND
+"""
+{
+  - n > 0 ?
+    n is {say n}
+  - {item "key"} == 1 ?
+    has key
+  - else ?
+    nothing yet
+}
+{n == 0 ? "zero" : "some"}
+"""
+
+DLG DLG_FX
+plain {wvy}wavy{wvy} {clr2}colour{clr2} {rbw}rainbow{rbw} {shk}shake{shk} {drwt "face"} tile{br}next line{pg}new page
+
+DLG DLG_WORLD
+{pal "night"}{ava "npc1"}pal={say {pal}} ava={say {ava}}
+
+DLG DLG_ITEMS
+{item "key" 2}keys={say {item "key"}}{item "0" {{item "0"} - 1}} now={say {item "0"}}
+
+DLG DLG_VARS
+{s = "hello"}{t = s + " world"}{u}{say t} [{say missing}] [{x}]
+
+DLG DLG_LONG
+This is a long line of dialog that goes on and on so that it has to wrap over several rows and then over several pages of the text box, because it never seems to stop talking about nothing at all.
+
+VAR n
+0
+

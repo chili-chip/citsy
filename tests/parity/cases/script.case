@@ -1,0 +1,41 @@
+# Dialog scripts: values, operators, lists, branches, effects, world functions.
+game ../games/script.bitsy
+read                 # title
+press up             # MATH
+read
+press right up       # SEQ
+read
+press up
+read
+press up
+read
+press up
+read
+press right up       # CYC
+read
+press up
+read
+press up
+read
+press right up       # SHUF
+read
+press up
+read
+press up
+read
+press up
+read
+press right up       # COND
+read
+press right up       # FX
+read
+press right up       # WORLD
+read
+press right up       # ITEMS
+read
+press right up       # VARS
+read
+press right up       # LONG
+read
+press left left left left left up   # COND again
+read

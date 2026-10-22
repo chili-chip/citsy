@@ -1,0 +1,476 @@
+> start
+output @16 s1 off | s2 off | map
+room 0 at 4,4
+mode narrating
+dialog open
+> read
+output @6128 s1 262hz v5 p2 | s2 131hz v5 p1 | map
+output @6256 s1 262hz v5 p2 | s2 off | map
+output @6384 s1 330hz v5 p2 | s2 off | map
+output @6512 s1 off | s2 off | map
+output @6640 s1 392hz v5 p2 | s2 196hz v5 p1 | map
+output @6768 s1 392hz v5 p2 | s2 off | map
+output @7152 s1 off | s2 131hz v5 p1 | map
+output @7168 s1 523hz v1 p1 | s2 131hz v5 p1 | map
+output @7184 s1 523hz v3 p1 | s2 131hz v5 p1 | map
+output @7200 s1 523hz v4 p1 | s2 131hz v5 p1 | map
+output @7216 s1 523hz v6 p1 | s2 131hz v5 p1 | map
+output @7232 s1 523hz v8 p1 | s2 131hz v5 p1 | map
+output @7248 s1 587hz v9 p1 | s2 131hz v5 p1 | map
+output @7280 s1 587hz v8 p1 | s2 off | map
+output @7296 s1 587hz v7 p1 | s2 off | map
+output @7312 s1 587hz v6 p1 | s2 off | map
+output @7344 s1 523hz v6 p1 | s2 off | map
+output @7408 s1 262hz v5 p2 | s2 off | map
+output @7664 s1 196hz v5 p2 | s2 196hz v5 p1 | map
+output @7792 s1 220hz v5 p2 | s2 off | map
+output @7920 s1 247hz v5 p2 | s2 off | map
+output @8048 s1 off | s2 off | map
+output @8176 s1 440hz v5 p2 | s2 175hz v5 p1 | map
+output @8304 s1 440hz v5 p2 | s2 off | map
+output @9184 s1 off | s2 off | map
+output @9200 s1 349hz v5 p2 | s2 off | map
+output @9328 s1 off | s2 off | map
+output @9712 s1 294hz v5 p2 | s2 off | map
+output @9840 s1 off | s2 off | map
+output @10224 s1 262hz v5 p2 | s2 131hz v5 p1 | map
+output @10352 s1 262hz v5 p2 | s2 off | map
+output @10480 s1 330hz v5 p2 | s2 off | map
+output @10608 s1 off | s2 off | map
+output @10736 s1 392hz v5 p2 | s2 196hz v5 p1 | map
+output @10864 s1 392hz v5 p2 | s2 off | map
+output @11248 s1 off | s2 131hz v5 p1 | map
+output @11264 s1 523hz v1 p1 | s2 131hz v5 p1 | map
+output @11280 s1 523hz v3 p1 | s2 131hz v5 p1 | map
+output @11296 s1 523hz v4 p1 | s2 131hz v5 p1 | map
+output @11312 s1 523hz v6 p1 | s2 131hz v5 p1 | map
+output @11328 s1 523hz v8 p1 | s2 131hz v5 p1 | map
+output @11344 s1 587hz v9 p1 | s2 131hz v5 p1 | map
+output @11376 s1 587hz v8 p1 | s2 off | map
+output @11392 s1 587hz v7 p1 | s2 off | map
+output @11408 s1 587hz v6 p1 | s2 off | map
+output @11440 s1 523hz v6 p1 | s2 off | map
+output @11504 s1 262hz v5 p2 | s2 off | map
+output @11760 s1 196hz v5 p2 | s2 196hz v5 p1 | map
+output @11888 s1 220hz v5 p2 | s2 off | map
+output @12016 s1 247hz v5 p2 | s2 off | map
+text "sound parity"
+room 0 at 4,4
+mode playing
+dialog -
+inventory -
+> press right
+output @12048 s1 659hz v4 p2 | s2 off | map
+output @12064 s1 659hz v8 p2 | s2 off | map
+output @12080 s1 659hz v9 p2 | s2 off | map
+output @12096 s1 659hz v8 p2 | s2 off | map
+output @12112 s1 659hz v7 p2 | s2 off | map
+output @12128 s1 659hz v6 p2 | s2 off | map
+output @12144 s1 659hz v5 p2 | s2 off | map
+output @12160 s1 659hz v4 p2 | s2 off | map
+output @12208 s1 988hz v4 p2 | s2 off | map
+output @12368 s1 988hz v3 p2 | s2 off | map
+output @12400 s1 988hz v2 p2 | s2 off | map
+output @12432 s1 988hz v1 p2 | s2 off | map
+output @12464 s1 off | s2 off | map
+room 0 at 4,4
+mode playing
+dialog open
+> read
+output @18304 s1 440hz v5 p2 | s2 175hz v5 p1 | map
+output @18432 s1 440hz v5 p2 | s2 off | map
+output @19312 s1 off | s2 off | map
+output @19328 s1 349hz v5 p2 | s2 off | map
+output @19456 s1 off | s2 off | map
+output @19840 s1 294hz v5 p2 | s2 off | map
+output @19968 s1 off | s2 off | map
+output @20352 s1 262hz v5 p2 | s2 131hz v5 p1 | map
+output @20480 s1 262hz v5 p2 | s2 off | map
+output @20608 s1 330hz v5 p2 | s2 off | map
+output @20736 s1 off | s2 off | map
+output @20864 s1 392hz v5 p2 | s2 196hz v5 p1 | map
+output @20992 s1 392hz v5 p2 | s2 off | map
+output @21376 s1 off | s2 131hz v5 p1 | map
+output @21392 s1 523hz v1 p1 | s2 131hz v5 p1 | map
+output @21408 s1 523hz v3 p1 | s2 131hz v5 p1 | map
+output @21424 s1 523hz v4 p1 | s2 131hz v5 p1 | map
+output @21440 s1 523hz v6 p1 | s2 131hz v5 p1 | map
+output @21456 s1 523hz v8 p1 | s2 131hz v5 p1 | map
+output @21472 s1 587hz v9 p1 | s2 131hz v5 p1 | map
+output @21504 s1 587hz v8 p1 | s2 off | map
+output @21520 s1 587hz v7 p1 | s2 off | map
+output @21536 s1 587hz v6 p1 | s2 off | map
+output @21568 s1 523hz v6 p1 | s2 off | map
+output @21632 s1 262hz v5 p2 | s2 off | map
+output @21888 s1 196hz v5 p2 | s2 196hz v5 p1 | map
+output @22016 s1 220hz v5 p2 | s2 off | map
+output @22144 s1 247hz v5 p2 | s2 off | map
+output @22272 s1 off | s2 off | map
+output @22400 s1 440hz v5 p2 | s2 175hz v5 p1 | map
+output @22528 s1 440hz v5 p2 | s2 off | map
+output @23408 s1 off | s2 off | map
+output @23424 s1 349hz v5 p2 | s2 off | map
+output @23552 s1 off | s2 off | map
+output @23936 s1 294hz v5 p2 | s2 off | map
+output @24064 s1 off | s2 off | map
+text "meow"
+room 0 at 4,4
+mode playing
+dialog -
+inventory -
+> press left
+output @24112 s1 587hz v1 p1 | s2 off | map
+output @24128 s1 587hz v3 p1 | s2 off | map
+output @24144 s1 587hz v4 p1 | s2 off | map
+output @24160 s1 587hz v6 p1 | s2 off | map
+output @24176 s1 587hz v8 p1 | s2 off | map
+output @24192 s1 659hz v9 p1 | s2 off | map
+output @24224 s1 659hz v8 p1 | s2 off | map
+output @24240 s1 659hz v7 p1 | s2 off | map
+output @24256 s1 659hz v6 p1 | s2 off | map
+output @24288 s1 587hz v6 p1 | s2 off | map
+output @24368 s1 587hz v5 p1 | s2 off | map
+output @24384 s1 587hz v4 p1 | s2 off | map
+output @24416 s1 587hz v3 p1 | s2 off | map
+output @24448 s1 587hz v2 p1 | s2 off | map
+output @24464 s1 587hz v1 p1 | s2 off | map
+output @24496 s1 off | s2 off | map
+output @24864 s1 262hz v5 p2 | s2 131hz v5 p1 | map
+output @24992 s1 262hz v5 p2 | s2 off | map
+output @25120 s1 330hz v5 p2 | s2 off | map
+output @25248 s1 off | s2 off | map
+output @25376 s1 392hz v5 p2 | s2 196hz v5 p1 | map
+output @25504 s1 392hz v5 p2 | s2 off | map
+output @25888 s1 off | s2 131hz v5 p1 | map
+output @25904 s1 523hz v1 p1 | s2 131hz v5 p1 | map
+output @25920 s1 523hz v3 p1 | s2 131hz v5 p1 | map
+output @25936 s1 523hz v4 p1 | s2 131hz v5 p1 | map
+output @25952 s1 523hz v6 p1 | s2 131hz v5 p1 | map
+output @25968 s1 523hz v8 p1 | s2 131hz v5 p1 | map
+output @25984 s1 587hz v9 p1 | s2 131hz v5 p1 | map
+output @26016 s1 587hz v8 p1 | s2 off | map
+output @26032 s1 587hz v7 p1 | s2 off | map
+output @26048 s1 587hz v6 p1 | s2 off | map
+output @26080 s1 523hz v6 p1 | s2 off | map
+output @26144 s1 262hz v5 p2 | s2 off | map
+output @26400 s1 196hz v5 p2 | s2 196hz v5 p1 | map
+output @26528 s1 220hz v5 p2 | s2 off | map
+output @26656 s1 247hz v5 p2 | s2 off | map
+output @26784 s1 off | s2 off | map
+output @26912 s1 440hz v5 p2 | s2 175hz v5 p1 | map
+output @27040 s1 440hz v5 p2 | s2 off | map
+output @27920 s1 off | s2 off | map
+output @27936 s1 349hz v5 p2 | s2 off | map
+output @28064 s1 off | s2 off | map
+output @28448 s1 294hz v5 p2 | s2 off | map
+output @28576 s1 off | s2 off | map
+output @28960 s1 262hz v5 p2 | s2 131hz v5 p1 | map
+output @29088 s1 262hz v5 p2 | s2 off | map
+output @29216 s1 330hz v5 p2 | s2 off | map
+output @29344 s1 off | s2 off | map
+output @29472 s1 392hz v5 p2 | s2 196hz v5 p1 | map
+output @29600 s1 392hz v5 p2 | s2 off | map
+output @29984 s1 off | s2 131hz v5 p1 | map
+output @30000 s1 523hz v1 p1 | s2 131hz v5 p1 | map
+output @30016 s1 523hz v3 p1 | s2 131hz v5 p1 | map
+output @30032 s1 523hz v4 p1 | s2 131hz v5 p1 | map
+output @30048 s1 523hz v6 p1 | s2 131hz v5 p1 | map
+output @30064 s1 523hz v8 p1 | s2 131hz v5 p1 | map
+output @30080 s1 587hz v9 p1 | s2 131hz v5 p1 | map
+output @30112 s1 587hz v8 p1 | s2 off | map
+output @30128 s1 587hz v7 p1 | s2 off | map
+room 0 at 3,4
+mode playing
+dialog -
+inventory bell=1
+> press right down
+output @30144 s1 587hz v6 p1 | s2 off | map
+output @30176 s1 523hz v6 p1 | s2 off | map
+output @30240 s1 262hz v5 p2 | s2 off | map
+output @30496 s1 196hz v5 p2 | s2 196hz v5 p1 | map
+output @30624 s1 220hz v5 p2 | s2 off | map
+output @30752 s1 247hz v5 p2 | s2 off | map
+output @30880 s1 off | s2 off | map
+output @31008 s1 440hz v5 p2 | s2 175hz v5 p1 | map
+output @31136 s1 440hz v5 p2 | s2 off | map
+output @32016 s1 off | s2 off | map
+output @32032 s1 349hz v5 p2 | s2 off | map
+output @32160 s1 off | s2 off | map
+output @32544 s1 294hz v5 p2 | s2 off | map
+output @32672 s1 off | s2 off | map
+output @33056 s1 262hz v5 p2 | s2 131hz v5 p1 | map
+output @33184 s1 262hz v5 p2 | s2 off | map
+output @33312 s1 330hz v5 p2 | s2 off | map
+output @33440 s1 off | s2 off | map
+output @33568 s1 392hz v5 p2 | s2 196hz v5 p1 | map
+output @33696 s1 392hz v5 p2 | s2 off | map
+output @34080 s1 off | s2 131hz v5 p1 | map
+output @34096 s1 523hz v1 p1 | s2 131hz v5 p1 | map
+output @34112 s1 523hz v3 p1 | s2 131hz v5 p1 | map
+output @34128 s1 523hz v4 p1 | s2 131hz v5 p1 | map
+output @34144 s1 523hz v6 p1 | s2 131hz v5 p1 | map
+output @34160 s1 523hz v8 p1 | s2 131hz v5 p1 | map
+output @34176 s1 587hz v9 p1 | s2 131hz v5 p1 | map
+output @34208 s1 587hz v8 p1 | s2 off | map
+output @34224 s1 587hz v7 p1 | s2 off | map
+output @34240 s1 587hz v6 p1 | s2 off | map
+output @34272 s1 523hz v6 p1 | s2 off | map
+output @34336 s1 262hz v5 p2 | s2 off | map
+output @34592 s1 196hz v5 p2 | s2 196hz v5 p1 | map
+output @34720 s1 220hz v5 p2 | s2 off | map
+output @34848 s1 247hz v5 p2 | s2 off | map
+output @34976 s1 off | s2 off | map
+output @35104 s1 440hz v5 p2 | s2 175hz v5 p1 | map
+output @35232 s1 440hz v5 p2 | s2 off | map
+output @36112 s1 off | s2 off | map
+output @36128 s1 349hz v5 p2 | s2 off | map
+output @36176 s1 349hz v5 p2 | s2 off | video
+output @36256 s1 off | s2 off | video
+output @36800 s1 off | s2 off | map
+output @36992 s1 262hz v5 p0 | s2 131hz v5 p2 | map
+output @37184 s1 262hz v5 p0 | s2 165hz v5 p2 | map
+output @37376 s1 262hz v5 p0 | s2 196hz v5 p2 | map
+output @37568 s1 off | s2 262hz v5 p2 | map
+output @37760 s1 330hz v5 p0 | s2 131hz v5 p2 | map
+output @37952 s1 off | s2 165hz v5 p2 | map
+output @38144 s1 392hz v5 p0 | s2 196hz v5 p2 | map
+output @38336 s1 off | s2 262hz v5 p2 | map
+output @38528 s1 523hz v5 p0 | s2 131hz v5 p2 | map
+output @38720 s1 off | s2 165hz v5 p2 | map
+output @38912 s1 off | s2 196hz v5 p2 | map
+output @39104 s1 off | s2 262hz v5 p2 | map
+output @39296 s1 440hz v5 p0 | s2 131hz v5 p2 | map
+output @39488 s1 off | s2 165hz v5 p2 | map
+output @39680 s1 off | s2 196hz v5 p2 | map
+output @39872 s1 off | s2 262hz v5 p2 | map
+output @40064 s1 392hz v5 p0 | s2 196hz v5 p2 | map
+output @40256 s1 392hz v5 p0 | s2 247hz v5 p2 | map
+output @40448 s1 off | s2 294hz v5 p2 | map
+output @40640 s1 off | s2 392hz v5 p2 | map
+output @40832 s1 330hz v5 p0 | s2 196hz v5 p2 | map
+output @41024 s1 330hz v5 p0 | s2 247hz v5 p2 | map
+output @41216 s1 off | s2 294hz v5 p2 | map
+output @41408 s1 off | s2 392hz v5 p2 | map
+output @41600 s1 294hz v5 p0 | s2 196hz v5 p2 | map
+output @41792 s1 294hz v5 p0 | s2 247hz v5 p2 | map
+output @41984 s1 294hz v5 p0 | s2 294hz v5 p2 | map
+output @42176 s1 294hz v5 p0 | s2 392hz v5 p2 | map
+room 1 at 4,3
+mode playing
+dialog -
+inventory bell=1
+> press right
+output @42352 s1 off | s2 392hz v5 p2 | map
+output @42368 s1 off | s2 off | map
+room 1 at 4,3
+mode playing
+dialog open
+> read
+output @48320 s1 262hz v5 p1 | s2 off | map
+output @48416 s1 294hz v5 p1 | s2 off | map
+output @48512 s1 330hz v5 p1 | s2 off | map
+output @48608 s1 349hz v5 p1 | s2 off | map
+output @48704 s1 392hz v5 p1 | s2 off | map
+output @48800 s1 440hz v5 p1 | s2 off | map
+output @48896 s1 494hz v5 p1 | s2 off | map
+output @48992 s1 523hz v5 p1 | s2 off | map
+output @49088 s1 off | s2 off | map
+output @49856 s1 262hz v5 p1 | s2 off | map
+output @49952 s1 294hz v5 p1 | s2 off | map
+output @50048 s1 330hz v5 p1 | s2 off | map
+output @50144 s1 349hz v5 p1 | s2 off | map
+output @50240 s1 392hz v5 p1 | s2 off | map
+output @50336 s1 440hz v5 p1 | s2 off | map
+output @50432 s1 494hz v5 p1 | s2 off | map
+output @50528 s1 523hz v5 p1 | s2 off | map
+output @50624 s1 off | s2 off | map
+output @51392 s1 262hz v5 p1 | s2 off | map
+output @51488 s1 294hz v5 p1 | s2 off | map
+output @51584 s1 330hz v5 p1 | s2 off | map
+output @51680 s1 349hz v5 p1 | s2 off | map
+output @51776 s1 392hz v5 p1 | s2 off | map
+output @51872 s1 440hz v5 p1 | s2 off | map
+output @51968 s1 494hz v5 p1 | s2 off | map
+output @52064 s1 523hz v5 p1 | s2 off | map
+output @52160 s1 off | s2 off | map
+output @52928 s1 262hz v5 p1 | s2 off | map
+output @53024 s1 294hz v5 p1 | s2 off | map
+output @53120 s1 330hz v5 p1 | s2 off | map
+output @53216 s1 349hz v5 p1 | s2 off | map
+output @53312 s1 392hz v5 p1 | s2 off | map
+output @53408 s1 440hz v5 p1 | s2 off | map
+output @53504 s1 494hz v5 p1 | s2 off | map
+output @53600 s1 523hz v5 p1 | s2 off | map
+output @53696 s1 off | s2 off | map
+text "three"
+room 1 at 4,3
+mode playing
+dialog -
+inventory bell=1
+> press right
+room 1 at 4,3
+mode playing
+dialog open
+> read
+text "quiet"
+room 1 at 4,3
+mode playing
+dialog -
+inventory bell=1
+> press right
+output @66336 s1 262hz v9 p0 | s2 off | map
+output @66352 s1 262hz v8 p0 | s2 off | map
+output @66368 s1 330hz v8 p0 | s2 off | map
+output @66400 s1 392hz v8 p0 | s2 off | map
+output @66432 s1 262hz v8 p0 | s2 off | map
+output @66464 s1 330hz v8 p0 | s2 off | map
+output @66480 s1 392hz v8 p0 | s2 off | map
+output @66512 s1 262hz v8 p0 | s2 off | map
+output @66544 s1 330hz v8 p0 | s2 off | map
+output @66560 s1 330hz v6 p0 | s2 off | map
+output @66576 s1 392hz v3 p0 | s2 off | map
+output @66592 s1 392hz v1 p0 | s2 off | map
+output @66608 s1 off | s2 off | map
+room 1 at 4,3
+mode playing
+dialog open
+> read
+text "again"
+room 1 at 4,3
+mode playing
+dialog -
+inventory bell=1
+> press right
+room 1 at 4,3
+mode playing
+dialog open
+> read
+output @84608 s1 262hz v5 p0 | s2 131hz v5 p2 | map
+output @84800 s1 262hz v5 p0 | s2 165hz v5 p2 | map
+output @84992 s1 262hz v5 p0 | s2 196hz v5 p2 | map
+output @85184 s1 off | s2 262hz v5 p2 | map
+output @85376 s1 330hz v5 p0 | s2 131hz v5 p2 | map
+output @85568 s1 off | s2 165hz v5 p2 | map
+output @85760 s1 392hz v5 p0 | s2 196hz v5 p2 | map
+output @85952 s1 off | s2 262hz v5 p2 | map
+output @86144 s1 523hz v5 p0 | s2 131hz v5 p2 | map
+output @86336 s1 off | s2 165hz v5 p2 | map
+output @86528 s1 off | s2 196hz v5 p2 | map
+output @86720 s1 off | s2 262hz v5 p2 | map
+output @86912 s1 440hz v5 p0 | s2 131hz v5 p2 | map
+output @87104 s1 off | s2 165hz v5 p2 | map
+output @87296 s1 off | s2 196hz v5 p2 | map
+output @87488 s1 off | s2 262hz v5 p2 | map
+output @87680 s1 392hz v5 p0 | s2 196hz v5 p2 | map
+output @87872 s1 392hz v5 p0 | s2 247hz v5 p2 | map
+output @88064 s1 off | s2 294hz v5 p2 | map
+output @88256 s1 off | s2 392hz v5 p2 | map
+output @88448 s1 330hz v5 p0 | s2 196hz v5 p2 | map
+output @88640 s1 330hz v5 p0 | s2 247hz v5 p2 | map
+output @88832 s1 off | s2 294hz v5 p2 | map
+output @89024 s1 off | s2 392hz v5 p2 | map
+output @89216 s1 294hz v5 p0 | s2 196hz v5 p2 | map
+output @89408 s1 294hz v5 p0 | s2 247hz v5 p2 | map
+output @89600 s1 294hz v5 p0 | s2 294hz v5 p2 | map
+output @89792 s1 294hz v5 p0 | s2 392hz v5 p2 | map
+output @89968 s1 off | s2 392hz v5 p2 | map
+output @89984 s1 off | s2 196hz v5 p2 | map
+output @90176 s1 off | s2 247hz v5 p2 | map
+output @90368 s1 off | s2 294hz v5 p2 | map
+text "back"
+room 1 at 4,3
+mode playing
+dialog -
+inventory bell=1
+> press right
+output @90464 s1 392hz v9 p2 | s2 294hz v5 p2 | map
+output @90480 s1 392hz v8 p2 | s2 294hz v5 p2 | map
+output @90560 s1 392hz v8 p2 | s2 off | map
+output @90592 s1 392hz v5 p2 | s2 off | map
+output @90608 s1 392hz v3 p2 | s2 off | map
+output @90624 s1 off | s2 off | map
+room 1 at 4,3
+mode playing
+dialog open
+> read
+output @96592 s1 off | s2 392hz v5 p2 | map
+output @96784 s1 262hz v5 p0 | s2 131hz v5 p2 | map
+output @96976 s1 262hz v5 p0 | s2 165hz v5 p2 | map
+output @97168 s1 262hz v5 p0 | s2 196hz v5 p2 | map
+output @97360 s1 off | s2 262hz v5 p2 | map
+output @97552 s1 330hz v5 p0 | s2 131hz v5 p2 | map
+output @97744 s1 off | s2 165hz v5 p2 | map
+output @97936 s1 392hz v5 p0 | s2 196hz v5 p2 | map
+output @98128 s1 off | s2 262hz v5 p2 | map
+output @98320 s1 523hz v5 p0 | s2 131hz v5 p2 | map
+output @98512 s1 off | s2 165hz v5 p2 | map
+output @98704 s1 off | s2 196hz v5 p2 | map
+output @98896 s1 off | s2 262hz v5 p2 | map
+output @99088 s1 440hz v5 p0 | s2 131hz v5 p2 | map
+output @99280 s1 off | s2 165hz v5 p2 | map
+output @99472 s1 off | s2 196hz v5 p2 | map
+output @99664 s1 off | s2 262hz v5 p2 | map
+output @99856 s1 392hz v5 p0 | s2 196hz v5 p2 | map
+output @100048 s1 392hz v5 p0 | s2 247hz v5 p2 | map
+output @100240 s1 off | s2 294hz v5 p2 | map
+output @100432 s1 off | s2 392hz v5 p2 | map
+output @100624 s1 330hz v5 p0 | s2 196hz v5 p2 | map
+output @100816 s1 330hz v5 p0 | s2 247hz v5 p2 | map
+output @101008 s1 off | s2 294hz v5 p2 | map
+output @101200 s1 off | s2 392hz v5 p2 | map
+output @101392 s1 294hz v5 p0 | s2 196hz v5 p2 | map
+output @101584 s1 294hz v5 p0 | s2 247hz v5 p2 | map
+output @101776 s1 294hz v5 p0 | s2 294hz v5 p2 | map
+output @101968 s1 294hz v5 p0 | s2 392hz v5 p2 | map
+output @102144 s1 off | s2 392hz v5 p2 | map
+output @102160 s1 off | s2 196hz v5 p2 | map
+output @102352 s1 off | s2 247hz v5 p2 | map
+text "zero beat"
+room 1 at 4,3
+mode playing
+dialog -
+inventory bell=1
+> press right
+output @102544 s1 off | s2 off | map
+room 1 at 4,3
+mode playing
+dialog open
+> read
+output @108576 s1 off | s2 294hz v5 p2 | map
+output @108768 s1 off | s2 392hz v5 p2 | map
+output @108960 s1 262hz v5 p0 | s2 131hz v5 p2 | map
+output @109152 s1 262hz v5 p0 | s2 165hz v5 p2 | map
+output @109344 s1 262hz v5 p0 | s2 196hz v5 p2 | map
+output @109536 s1 off | s2 262hz v5 p2 | map
+output @109728 s1 330hz v5 p0 | s2 131hz v5 p2 | map
+output @109920 s1 off | s2 165hz v5 p2 | map
+output @110112 s1 392hz v5 p0 | s2 196hz v5 p2 | map
+output @110304 s1 off | s2 262hz v5 p2 | map
+output @110496 s1 523hz v5 p0 | s2 131hz v5 p2 | map
+output @110688 s1 off | s2 165hz v5 p2 | map
+output @110880 s1 off | s2 196hz v5 p2 | map
+output @111072 s1 off | s2 262hz v5 p2 | map
+output @111264 s1 440hz v5 p0 | s2 131hz v5 p2 | map
+output @111456 s1 off | s2 165hz v5 p2 | map
+output @111648 s1 off | s2 196hz v5 p2 | map
+output @111840 s1 off | s2 262hz v5 p2 | map
+output @112032 s1 392hz v5 p0 | s2 196hz v5 p2 | map
+output @112224 s1 392hz v5 p0 | s2 247hz v5 p2 | map
+output @112416 s1 off | s2 294hz v5 p2 | map
+output @112608 s1 off | s2 392hz v5 p2 | map
+output @112800 s1 330hz v5 p0 | s2 196hz v5 p2 | map
+output @112992 s1 330hz v5 p0 | s2 247hz v5 p2 | map
+output @113184 s1 off | s2 294hz v5 p2 | map
+output @113376 s1 off | s2 392hz v5 p2 | map
+output @113568 s1 294hz v5 p0 | s2 196hz v5 p2 | map
+output @113760 s1 294hz v5 p0 | s2 247hz v5 p2 | map
+output @113952 s1 294hz v5 p0 | s2 294hz v5 p2 | map
+output @114144 s1 294hz v5 p0 | s2 392hz v5 p2 | map
+output @114320 s1 off | s2 392hz v5 p2 | map
+output @114336 s1 off | s2 196hz v5 p2 | map
+output @114528 s1 off | s2 247hz v5 p2 | map
+text "zero beat repeat"
+room 1 at 4,3
+mode playing
+dialog -
+inventory bell=1

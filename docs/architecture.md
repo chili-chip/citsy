@@ -65,7 +65,7 @@ citsy/
 │   ├── engine/             # Simulation loop, movement, collision, exits
 │   ├── dialog/             # Script interpreter (variables, lists, {print*}, {ava}…)
 │   ├── render/             # Logical compositor → map1 / map2 / video
-│   ├── font/               # .bitsyfont + built-in ascii_small
+│   ├── font/               # .bitsyfont + Bitsy's built-in fonts
 │   ├── sound/              # Blip / tune → SoundChannel params
 │   └── transition/         # Fade / wave / tunnel / slide
 ├── backends/
@@ -140,7 +140,7 @@ while (engine.is_running()) {
 
 ### Dialog (`src/dialog/`)
 
-Phase 1 extracts linear text pages from `DLG` source (`extract_dialog_pages`). The script interpreter (`DialogVM`) evaluates `{print}`, assignments, conditionals, lists, inventory, `{ava}`/`{pal}`/`{tune}`/`{blip}`, `{exit}`, `{end}`, `{lock}`, `{printSprite}`/`{printTile}`/`{printItem}`, and text effects `{wvy}`/`{shk}`/`{rbw}`/`{clr}`.
+The script interpreter (`DialogVM`, `src/dialog/script.cpp`) is a port of Bitsy 8.15's `script.js` parser and interpreter, with JavaScript value rules in `src/dialog/value.cpp`. It runs a script a page at a time and calls the engine through `DialogWorld` for variables, items, `{property locked}`, `{ava}`/`{pal}`/`{tune}`/`{blip}`, `{exit}`, `{end}` and drawings. `tests/parity` checks it against the Bitsy engine itself.
 
 ### Render (`src/render/`)
 
@@ -158,7 +158,7 @@ The host still receives `GraphicsMode::Map` during gameplay and `GraphicsMode::V
 
 | Module | Role |
 |---|---|
-| `font/` | Parse `.bitsyfont` and blit into the textbox (built-in `ascii_small` 6×8). Background is always black; default ink is white. `{wvy}`/`{shk}`/`{rbw}`/`{clr}` combine. Whole words wrap to the next row; leftover rows become a new screen. Glyphs type in over time (`visible_char_count`); wrap positions stay fixed. `TEXT_DIRECTION RTL` reverses line layout. |
+| `font/` | Parse `.bitsyfont` and blit into the textbox. Bitsy's fonts are built in (`ascii_small`, `unicode_european_small`, `unicode_european_large` and `arabic`; `builtin_fonts.cpp` is written by `scripts/gen_builtin_fonts.py`). Arabic letters are joined as in Bitsy (`shape_arabic`). Background is always black; default ink is white. `{wvy}`/`{shk}`/`{rbw}`/`{clr}` combine. Whole words wrap to the next row; leftover rows become a new screen. Glyphs type in over time (`visible_char_count`); wrap positions stay fixed. `TEXT_DIRECTION RTL` reverses line layout. |
 | `sound/` | Turns `BLIP` / `TUNE` data into `SoundChannel` frequency, volume, pulse, and duration. Hosts play the square waves. |
 | `transition/` | `fade_w`, `fade_b`, `wave`, `tunnel`, `slide_u`/`d`/`l`/`r` written into the 128×128 video buffer. |
 

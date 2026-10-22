@@ -1,0 +1,12 @@
+# mossland (Bitsy 6.4 file, DLG_COMPAT): a cycle sprite, then into room 2.
+game ../../data/mossland.bitsy
+read
+press right down down down     # the bottle-world sprite (cycle)
+read
+press down
+read
+press down
+read
+press right down right right   # exit to room 2
+press right up right up up up right right
+read

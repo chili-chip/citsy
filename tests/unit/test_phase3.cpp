@@ -55,8 +55,12 @@ constexpr std::string_view kEmptyGrid =
     "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n"
     "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n";
 
+citsy::Game parse_body(std::string_view body) {
+    return citsy::parse("test\n\n" + std::string(body));  // line 0 is the title
+}
+
 std::string game_src(std::string extra) {
-    return std::string("# BITSY VERSION 8.15\n\n! ROOM_FORMAT 1\n\n") +
+    return std::string("\n\n# BITSY VERSION 8.15\n\n! ROOM_FORMAT 1\n\n") +
            std::string(kPal) + "\nROOM 0\n" + std::string(kEmptyGrid) +
            "PAL 0\n" + extra + "\n" + std::string(kAvatar);
 }
@@ -83,7 +87,7 @@ void press_ok(citsy::Engine& e, citsy::MockHost& h) {
 // ---------------------------------------------------------------------------
 
 TEST_CASE("parser: TEXT_DIRECTION RTL", "[parser][phase3]") {
-    auto g = citsy::parse("TEXT_DIRECTION RTL\n");
+    auto g = parse_body("TEXT_DIRECTION RTL\n");
     CHECK(g.text_direction == citsy::TextDirection::RightToLeft);
 }
 
@@ -99,7 +103,7 @@ CHAR 65
 1001
 1111
 )";
-    auto g = citsy::parse(src);
+    auto g = parse_body(src);
     CHECK(g.font_name == "myfont");
     CHECK(g.font_data.find("CHAR 65") != std::string::npos);
 }
@@ -108,7 +112,7 @@ TEST_CASE("parser: room AVA and TUNE", "[parser][phase3]") {
     std::string src = "ROOM 0\n";
     src += kEmptyGrid;
     src += "PAL 0\nAVA 1\nTUNE 2\n";
-    auto g = citsy::parse(src);
+    auto g = parse_body(src);
     REQUIRE(g.rooms.count("0"));
     CHECK(g.rooms.at("0").avatar_id == "1");
     CHECK(g.rooms.at("0").tune_id == "2");
@@ -128,7 +132,7 @@ SPR 0
 BLIP 1
 BGC *
 )";
-    auto g = citsy::parse(src);
+    auto g = parse_body(src);
     REQUIRE(g.sprites.count("0"));
     CHECK(g.sprites.at("0").blip_id == "1");
     CHECK(g.sprites.at("0").bgc_transparent);
@@ -143,7 +147,7 @@ ENV 10 20 8 40 15
 BEAT 30 0
 SQR P8
 )";
-    auto g = citsy::parse(src);
+    auto g = parse_body(src);
     REQUIRE(g.blips.count("1"));
     const auto& b = g.blips.at("1");
     CHECK(b.name == "chirp");
@@ -164,7 +168,7 @@ TMP FST
 SQR P4 P8
 ARP UP
 )";
-    auto g = citsy::parse(src);
+    auto g = parse_body(src);
     REQUIRE(g.tunes.count("1"));
     const auto& t = g.tunes.at("1");
     CHECK(t.name == "jam");
@@ -179,7 +183,7 @@ TEST_CASE("parser: exit FX transition", "[parser][phase3]") {
     std::string src = "ROOM 0\n";
     src += kEmptyGrid;
     src += "EXT 15,8 1 0,8 FX fade_w\n";
-    auto g = citsy::parse(src);
+    auto g = parse_body(src);
     REQUIRE(g.rooms.at("0").exits.size() == 1);
     CHECK(g.rooms.at("0").exits[0].transition_effect == "fade_w");
 }
@@ -251,67 +255,6 @@ TEST_CASE("font: RTL flips glyph origin", "[font][phase3]") {
 // Dialog VM
 // ---------------------------------------------------------------------------
 
-TEST_CASE("dialog vm: two quoted pages", "[dialog][phase3]") {
-    citsy::DialogVM vm;
-    vm.start("\"Hello!\"\n\"Nice to meet you.\"", {});
-    REQUIRE(vm.active());
-    CHECK(vm.plain_text() == "Hello!");
-    REQUIRE(vm.continue_page());
-    CHECK(vm.plain_text() == "Nice to meet you.");
-    CHECK_FALSE(vm.continue_page());
-}
-
-TEST_CASE("dialog vm: {p} splits a string", "[dialog][phase3]") {
-    citsy::DialogVM vm;
-    vm.start(R"("First{p}Second")", {});
-    CHECK(vm.plain_text() == "First");
-    REQUIRE(vm.continue_page());
-    CHECK(vm.plain_text() == "Second");
-}
-
-TEST_CASE("dialog vm: {br} newline", "[dialog][phase3]") {
-    citsy::DialogVM vm;
-    vm.start(R"("Hello{br}world")", {});
-    CHECK(vm.plain_text() == "Hello\nworld");
-}
-
-TEST_CASE("dialog vm: assignment and print", "[dialog][phase3]") {
-    citsy::DialogVM vm;
-    std::unordered_map<std::string, citsy::DialogValue> vars;
-    citsy::DialogWorld w;
-    w.get_var = [&](std::string_view n) {
-        auto it = vars.find(std::string(n));
-        return it == vars.end() ? citsy::DialogValue::from_string({}) : it->second;
-    };
-    w.set_var = [&](std::string_view n, const citsy::DialogValue& v) {
-        vars[std::string(n)] = v;
-    };
-    vm.start("{score = 3}{score = score + 1}\"n={print score}\"", w);
-    CHECK(vm.plain_text() == "n=4");
-}
-
-TEST_CASE("dialog vm: conditional list", "[dialog][phase3]") {
-    citsy::DialogVM vm;
-    std::unordered_map<std::string, citsy::DialogValue> vars;
-    vars["has"] = citsy::DialogValue::from_number(1);
-    citsy::DialogWorld w;
-    w.get_var = [&](std::string_view n) {
-        auto it = vars.find(std::string(n));
-        return it == vars.end() ? citsy::DialogValue::from_number(0) : it->second;
-    };
-    vm.start("{\n- {has} == 1 ?\n\"yes\"\n- else\n\"no\"\n}", w);
-    CHECK(vm.plain_text() == "yes");
-}
-
-TEST_CASE("dialog vm: sequence list advances", "[dialog][phase3]") {
-    citsy::DialogVM vm;
-    vm.start("{\n- \"one\"\n- \"two\"\n}", {}, "seq");
-    CHECK(vm.plain_text() == "one");
-    vm.continue_page();
-    vm.start("{\n- \"one\"\n- \"two\"\n}", {}, "seq");
-    CHECK(vm.plain_text() == "two");
-}
-
 // ---------------------------------------------------------------------------
 // Engine: animation, inventory, endings, variables, transitions, sound
 // ---------------------------------------------------------------------------
@@ -368,8 +311,7 @@ POS 0 5,4
 DLG DLG_V
 
 DLG DLG_V
-{score = 7}
-"ok"
+{score = 7}ok
 
 VAR score
 0
@@ -385,7 +327,7 @@ VAR score
     CHECK(engine.variable("score") == "7");
 }
 
-TEST_CASE("engine: ending tile ends the game after dismiss", "[engine][phase3][ending]") {
+TEST_CASE("engine: ending tile ends the game, then restarts from the title", "[engine][phase3][ending]") {
     std::string extra = "END 0 5,4\n\nEND 0\nYou win!\n";
     auto src = game_src(extra);
     citsy::Engine engine(src);
@@ -396,8 +338,11 @@ TEST_CASE("engine: ending tile ends the game after dismiss", "[engine][phase3][e
     CHECK(engine.dialog_line() == "You win!");
     press_ok(engine, host);
     CHECK(engine.ending_active());
+    CHECK_FALSE(engine.narrating());
     press_ok(engine, host);
-    CHECK_FALSE(engine.is_running());
+    CHECK_FALSE(engine.ending_active());
+    CHECK(engine.is_running());
+    CHECK(engine.avatar_x() == 4);
 }
 
 TEST_CASE("engine: room AVA changes appearance", "[engine][phase3]") {
@@ -490,8 +435,7 @@ POS 0 5,4
 DLG DLG_A
 
 DLG DLG_A
-{ava 0}
-"swap"
+{ava 0}swap
 )";
     auto src = game_src(extra);
     citsy::Engine engine(src);
@@ -538,43 +482,10 @@ TEST_CASE("parser: legacy ROOM_FORMAT 0 single-char rows", "[parser][phase3]") {
     std::string src = "! ROOM_FORMAT 0\nROOM 0\n";
     src += std::string(16, '0') + "\n";
     for (int i = 1; i < 16; ++i) src += std::string(16, '0') + "\n";
-    auto g = citsy::parse(src);
+    auto g = parse_body(src);
     REQUIRE(g.rooms.count("0"));
     CHECK(g.rooms.at("0").tiles[0][0] == "0");
     CHECK(g.rooms.at("0").tiles[0][15] == "0");
-}
-
-TEST_CASE("dialog vm: {item} sets inventory", "[dialog][phase3][inventory]") {
-    citsy::DialogVM vm;
-    std::unordered_map<std::string, int> inv;
-    inv["key"] = 1;
-    citsy::DialogWorld w;
-    w.item_count = [&](std::string_view id) {
-        auto it = inv.find(std::string(id));
-        return it == inv.end() ? 0 : it->second;
-    };
-    w.set_item = [&](std::string_view id, int n) { inv[std::string(id)] = n; };
-    vm.start(R"({item "key" 0}"gone")", w);
-    CHECK(vm.plain_text() == "gone");
-    CHECK(inv["key"] == 0);
-}
-
-TEST_CASE("dialog vm: {property locked} round-trip", "[dialog][phase3]") {
-    citsy::DialogVM vm;
-    bool locked = false;
-    citsy::DialogWorld w;
-    w.get_property = [&](std::string_view name) {
-        CHECK(name == "locked");
-        return citsy::DialogValue::from_number(locked ? 1 : 0);
-    };
-    w.set_property = [&](std::string_view name, const citsy::DialogValue& v) {
-        CHECK(name == "locked");
-        locked = v.is_truthy();
-    };
-    vm.start("{property locked true}\"ok\"", w);
-    CHECK(locked);
-    vm.start("{property locked false}\"ok\"", w);
-    CHECK_FALSE(locked);
 }
 
 TEST_CASE("engine: title dialog shows at start", "[engine][phase3]") {
@@ -641,15 +552,14 @@ ITM 0
 NAME key
 
 DLG DLG_L
+"""
 {
-- {item "key"} > 0 ?
-  {item "key" 0}
-  {property locked false}
-  "opened"
-- else
-  {property locked true}
-  "locked"
+  - {item "key"} > 0 ?
+    {item "key" 0}{property locked false}opened
+  - else ?
+    {property locked true}locked
 }
+"""
 )";
     auto src = game_src(extra);
     citsy::Engine engine(src);

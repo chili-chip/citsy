@@ -91,15 +91,15 @@ Effects are drawn in video mode (a 128×128 colour-index buffer). The tune clock
 
 ### Locks
 
-An exit can require a condition before it warps. The usual pattern is a door that stays shut until the player is holding an item. The exit's dialog sets the `locked` property, often with `{lock}` or `{property "locked" 1}`, and the warp is skipped when that flag is set. The success branch can lower the count so the key is used up. See [Locked doors](dialog.md#locked-doors).
+An exit can require a condition before it warps. The usual pattern is a door that stays shut until the player is holding an item. The exit's dialog sets the `locked` property with `{property locked true}`, and the warp is skipped when it is `true`. Locks reset whenever the room is entered. The success branch can lower the count so the key is used up. See [Locked doors](dialog.md#locked-doors).
 
 ---
 
 ## Endings
 
-An ending tile shows that ending's text and then stops the game (`is_running()` becomes false). Endings have no transition effect. `{end}` inside any other dialog stops the game after the box closes, with no separate ending message.
+An ending tile clears the screen and shows that ending's text. When the text is over, the next button press restarts the game from the title, as in Bitsy (`ending_active()` is true until then). Releasing `Menu` restarts the game at any time. `{end}` inside any other dialog ends the game at once: the screen clears and the rest of that dialog is shown first.
 
-A locked ending (`{property locked true}` in the ending's text) cancels the finish: the ending text is shown, the game keeps running, the avatar stays on the ending tile and the room tune starts again. This matches upstream Bitsy's engine, whose `startEndingDialog` in `engine/bitsy.js` only clears `isEnding` and restarts the tune when `ending.property.locked` is true; it never moves the avatar. (The [exits and endings](https://make.bitsy.org/docs/tools/exitsandendings/) page can read as if the player is sent back to the previous room; the engine code does not do that.) One small difference: upstream restarts the tune that was playing when the ending started, citsy restarts the current room's tune.
+A locked ending (`{property locked true}` in the ending's text) cancels the finish: the ending text is shown, the game keeps running, the avatar stays on the ending tile and the tune that was playing starts again. This is upstream Bitsy's `startEndingDialog` in `engine/bitsy.js`; it never moves the avatar. (The [exits and endings](https://make.bitsy.org/docs/tools/exitsandendings/) page can read as if the player is sent back to the previous room; the engine code does not do that.)
 
 ---
 
@@ -109,7 +109,7 @@ Game settings choose how dialog is drawn:
 
 | Setting | File | Meaning |
 |---|---|---|
-| Font | `DEFAULT_FONT` / `FONT` | Built-in `ascii_small`, or a `.bitsyfont` (including fonts for other writing systems) |
+| Font | `DEFAULT_FONT` / `FONT` | Bitsy's built-in `ascii_small`, `unicode_european_small`, `unicode_european_large` and `arabic`, or a `FONT` segment. Arabic letters join as in Bitsy. `unicode_asian` is not supported |
 | Text direction | `TEXT_DIRECTION RTL` | Lines lay out from the right. Default is left to right |
 | Text mode | `! TXT_MODE 0` or `1` | `0` is the default (hirez). `1` is the editor's "chunky" mode (lorez) |
 
