@@ -157,7 +157,7 @@ DLG e1
 {property locked true}Not yet.
 
 DLG DLG_MOVER
-Off you go!{exit "far" 4 4 "wave"} Still talking in room {say {exit}}.
+{exit "far" 4 4 "wave"}Off you go! Still talking in room {say {exit}}.
 
 DLG DLG_ENDER
 Goodbye.{end} This still shows.

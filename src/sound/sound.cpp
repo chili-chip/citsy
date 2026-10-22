@@ -2,40 +2,98 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <string_view>
 
 namespace citsy {
 namespace {
 
+// Bitsy sound.js `frequencies`: octave 4 (middle C), in hertz.
 constexpr double kChromaticHz[12] = {
     261.7, 277.2, 293.7, 311.2, 329.7, 349.3,
     370.0, 392.0, 415.3, 440.0, 466.2, 493.9,
 };
 
+constexpr int kNoteCount = 12;
+constexpr int kSolfaCount = 7;
+constexpr int kOctaveCount = 4;
 constexpr double kMaxVolume = 15.0;
 constexpr double kNoteVolume = 5.0;
-constexpr double kSfxPeak = 10.0;
+constexpr double kSfxPeakVolume = 10.0;
+constexpr double kNaN = std::numeric_limits<double>::quiet_NaN();
 
-Pitch chromatic_from(const Pitch& pitch, const TuneKey* key) {
+/// JavaScript Math.min: NaN if either side is NaN.
+double js_min(double a, double b) {
+    if (std::isnan(a) || std::isnan(b)) return kNaN;
+    return std::min(a, b);
+}
+
+/// JavaScript Math.max.
+double js_max(double a, double b) {
+    if (std::isnan(a) || std::isnan(b)) return kNaN;
+    return std::max(a, b);
+}
+
+int pitch_to_steps(const Pitch& p) { return p.octave * kNoteCount + p.note; }
+
+/// Bitsy stepsToPitch: a one-beat pitch, clamped to C2..B5.
+Pitch steps_to_pitch(int steps) {
+    Pitch p;
+    p.beats = 1;
+    p.note = 0;
+    p.octave = 0;
+    while (steps >= kNoteCount) {
+        p.octave = (p.octave + 1) % kOctaveCount;
+        steps -= kNoteCount;
+    }
+    p.note += steps;
+    if (p.note <= -1) p.note = 0;
+    else if (p.note >= kNoteCount) p.note = kNoteCount - 1;
+    if (p.octave <= -1) p.octave = 0;
+    else if (p.octave >= kOctaveCount) p.octave = kOctaveCount - 1;
+    return p;
+}
+
+Pitch adjust_pitch(const Pitch& p, int step_delta) {
+    return steps_to_pitch(pitch_to_steps(p) + step_delta);
+}
+
+bool scale_has(const TuneKey& key, int note) {
+    return std::find(key.scale.begin(), key.scale.end(), note) != key.scale.end();
+}
+
+/// Key note for solfa degree @p degree, or -2 when there is none (Bitsy's
+/// `undefined`, which fails every comparison).
+int key_note(const TuneKey& key, int degree) {
+    if (degree < 0 || degree >= kSolfaCount) return -2;
+    return key.notes[static_cast<std::size_t>(degree)];
+}
+
+/// Bitsy isPitchPlayable. With a key, the note is a solfa degree.
+bool is_pitch_playable(const Pitch& pitch, const TuneKey* key) {
+    if (pitch.beats <= 0) return false;
+    if (!key) return true;
+    const int n = key_note(*key, pitch.note);
+    return scale_has(*key, pitch.note) && n > -1 && n < kNoteCount;
+}
+
+/// Bitsy pitchToChromatic: with a key, map the solfa degree to its note.
+Pitch to_chromatic(const Pitch& pitch, const TuneKey* key) {
+    if (!key) return pitch;
     Pitch out = pitch;
-    if (!pitch.solfa || !key) return out;
-    const int deg = pitch.note % 7;
-    int mapped = key->notes[static_cast<std::size_t>(deg)];
-    if (mapped < 0) mapped = pitch.note;
-    out.note = mapped;
+    const int offset = pitch.note >= kSolfaCount ? 1 : 0;
+    out.octave = pitch.octave + offset;
+    out.note = key->notes[static_cast<std::size_t>(((pitch.note % kSolfaCount) + kSolfaCount) % kSolfaCount)];
     out.solfa = false;
-    if (pitch.note >= 7) out.octave = std::min(3, out.octave + 1);
     return out;
 }
 
-bool pitch_playable(const Pitch& pitch, const TuneKey* key) {
-    if (pitch.beats <= 0) return false;
-    if (!key) return true;
-    if (!pitch.solfa) return true;
-    const int deg = pitch.note % 7;
-    if (std::find(key->scale.begin(), key->scale.end(), deg) == key->scale.end())
-        return false;
-    return key->notes[static_cast<std::size_t>(deg)] >= 0;
+/// Bitsy makePitchFrequency, in hertz. NaN for a note past B.
+double make_pitch_frequency(const Pitch& pitch) {
+    const int note = std::max(0, pitch.note);
+    const int octave = std::clamp(pitch.octave, 0, kOctaveCount - 1);
+    if (note >= kNoteCount) return kNaN;
+    return kChromaticHz[note] * std::pow(2.0, octave - 2);
 }
 
 int tempo_ms(Tempo t) {
@@ -48,6 +106,53 @@ int tempo_ms(Tempo t) {
     return 188;
 }
 
+/// Bitsy arpeggioPattern, in scale degrees.
+std::vector<int> arpeggio_steps(Arpeggio a) {
+    switch (a) {
+        case Arpeggio::Up:   return {0, 2, 4, 7};
+        case Arpeggio::Down: return {7, 4, 2, 0};
+        case Arpeggio::Int5: return {0, 4};
+        case Arpeggio::Int8: return {0, 7};
+        case Arpeggio::Off:  break;
+    }
+    return {};
+}
+
+/// Bitsy arpeggiateBar: the chord on the bar's first harmony note.
+std::vector<Pitch> arpeggiate_bar(const std::array<Pitch, kBarLength>& bar,
+                                  const TuneKey& key, Arpeggio pattern) {
+    std::vector<Pitch> out;
+    if (!is_pitch_playable(bar[0], &key)) return out;
+    for (const int step : arpeggio_steps(pattern)) {
+        Pitch p;
+        p.beats = 1;
+        p.note = bar[0].note + step;
+        p.octave = bar[0].octave;
+        out.push_back(to_chromatic(p, &key));
+    }
+    return out;
+}
+
+double sfx_volume_at(const Blip& blip, double time) {
+    const auto& e = blip.envelope;
+    const double attack = e.attack, decay = e.decay, length = e.length, release = e.release;
+    if (time < attack) {
+        return std::floor(kSfxPeakVolume * (time / attack));
+    }
+    if (time < attack + decay) {
+        const double t = (time - attack) / decay;
+        return std::floor(kSfxPeakVolume + (e.sustain - kSfxPeakVolume) * t);
+    }
+    if (time < attack + decay + length) {
+        return e.sustain;
+    }
+    if (time < attack + decay + length + release) {
+        const double t = (time - (attack + decay + length)) / release;
+        return std::floor(e.sustain * (1 - t));
+    }
+    return 0;
+}
+
 PulseWave pulse_named(std::string_view n) {
     if (n == "P8") return PulseWave::Eighth;
     if (n == "P4") return PulseWave::Quarter;
@@ -56,40 +161,73 @@ PulseWave pulse_named(std::string_view n) {
 
 } // namespace
 
+// ---------------------------------------------------------------------------
+// SoundChannels
+// ---------------------------------------------------------------------------
+
+void SoundChannels::sound(int ch, double duration_ms, double centihz, double volume,
+                          PulseWave pulse) {
+    voices_[static_cast<std::size_t>(ch)] = Voice{duration_ms, centihz, volume, pulse};
+}
+
+void SoundChannels::frequency(int ch, double centihz) {
+    voices_[static_cast<std::size_t>(ch)].centihz = centihz;
+}
+
+void SoundChannels::volume(int ch, double volume) {
+    voices_[static_cast<std::size_t>(ch)].volume = volume;
+}
+
+void SoundChannels::advance(double dt_ms) {
+    for (auto& v : voices_) v.left_ms = std::max(0.0, v.left_ms - dt_ms);
+}
+
+void SoundChannels::clear() { voices_ = {}; }
+
+SoundChannel SoundChannels::channel(int ch) const {
+    const Voice& v = voices_[static_cast<std::size_t>(ch)];
+    SoundChannel out;
+    // NaN frequencies (a Bitsy quirk) fail the test and stay silent.
+    if (!(v.left_ms > 0 && v.volume > 0 && v.centihz > 0)) return out;
+    out.active = true;
+    out.duration_ms = static_cast<int>(std::ceil(v.left_ms));
+    out.frequency_hz = static_cast<int>(std::lround(v.centihz / 100.0));
+    out.volume = static_cast<float>(std::clamp(v.volume / kMaxVolume, 0.0, 1.0));
+    out.pulse = v.pulse;
+    return out;
+}
+
+// ---------------------------------------------------------------------------
+// SoundPlayer
+// ---------------------------------------------------------------------------
+
 PulseWave pulse_from_name(std::string_view name) { return pulse_named(name); }
 int tempo_sixteenth_ms(Tempo t) { return tempo_ms(t); }
 
 double pitch_frequency_hz(const Pitch& pitch, const TuneKey* key) {
-    Pitch p = chromatic_from(pitch, key);
-    int note = std::clamp(p.note, 0, 11);
-    int oct = std::clamp(p.octave, 0, 3);
-    const int dist = oct - 2;  // Octave[4] == 2 is middle C
-    return kChromaticHz[note] * std::pow(2.0, dist);
+    return make_pitch_frequency(to_chromatic(pitch, key));
 }
 
-void SoundPlayer::play_blip(const Blip& blip, const Game& /*game*/) {
-    blip_ = blip;
-    blip_pulse_ = blip.instrument;
-    blip_timer_ = 0;
-    blip_duration_ = static_cast<double>(
-        blip.envelope.attack + blip.envelope.decay +
-        blip.envelope.length + blip.envelope.release);
-    blip_freqs_.clear();
-    blip_pitch_index_ = -1;
-    auto push = [&](const Pitch& p) {
-        if (p.beats > 0) blip_freqs_.push_back(pitch_frequency_hz(p, nullptr));
-    };
-    push(blip.pitch_a);
-    push(blip.pitch_b);
-    push(blip.pitch_c);
-    blip_active_ = true;
-    music_paused_for_blip_ = true;
+void SoundPlayer::play_blip(const Blip& blip, bool interrupt_music, const Pitch* pitch,
+                            const TuneKey* key) {
+    music_paused_for_blip_ = interrupt_music;
 
-    ch1_.active = !blip_freqs_.empty();
-    ch1_.frequency_hz = blip_freqs_.empty() ? 0 : static_cast<int>(blip_freqs_[0]);
-    ch1_.volume = 0;
-    ch1_.pulse = blip_pulse_;
-    ch1_.duration_ms = static_cast<int>(blip_duration_);
+    sfx_ = Sfx{};
+    sfx_.blip = blip;
+    const auto& e = blip.envelope;
+    sfx_.duration = static_cast<double>(e.attack + e.decay + e.length + e.release);
+    // A blip played as a tune note is moved to that note's pitch.
+    int step = 0;
+    if (pitch) step = pitch_to_steps(to_chromatic(*pitch, key)) - pitch_to_steps(blip.pitch_a);
+    for (const Pitch* p : {&blip.pitch_a, &blip.pitch_b, &blip.pitch_c}) {
+        if (p->beats > 0) sfx_.frequencies.push_back(make_pitch_frequency(adjust_pitch(*p, step)));
+    }
+    sfx_active_ = true;
+
+    // Duration times 10 is Bitsy's guard against the note stopping early.
+    out_.sound(SoundChannels::kSound1, sfx_.duration * 10,
+               sfx_.frequencies.empty() ? 0 : sfx_.frequencies[0] * 100, 0,
+               blip.instrument);
 }
 
 void SoundPlayer::play_tune(const Tune& tune) {
@@ -97,167 +235,121 @@ void SoundPlayer::play_tune(const Tune& tune) {
     beat16_timer_ = 0;
     beat16_index_ = -1;
     bar_index_ = 0;
-    beat16_ms_ = tempo_ms(tune.tempo);
-    tune_paused_ = false;
-    arpeggio_.clear();
+    beat16_ = tempo_ms(tune.tempo);
+    // Without a key Bitsy keeps the previous tune's arpeggio.
+    if (tune.arpeggio != Arpeggio::Off && tune.key && !tune.harmony.empty()) {
+        arpeggio_ = arpeggiate_bar(tune.harmony[0], *tune.key, tune.arpeggio);
+    }
 }
 
-void SoundPlayer::stop_tune() {
-    cur_tune_ = nullptr;
-    ch2_ = {};
-    if (!blip_active_) ch1_ = {};
-}
-
-void SoundPlayer::pause_tune() {
-    tune_paused_ = true;
-    if (!blip_active_) ch1_ = {};
-    ch2_ = {};
-}
+// Stopping or pausing leaves the notes already playing to finish, as in Bitsy.
+void SoundPlayer::stop_tune() { cur_tune_ = nullptr; }
+void SoundPlayer::pause_tune() { tune_paused_ = true; }
 void SoundPlayer::resume_tune() { tune_paused_ = false; }
 
+void SoundPlayer::advance(double dt_ms) { out_.advance(dt_ms); }
+
+void SoundPlayer::reset() { *this = SoundPlayer{}; }
+
 void SoundPlayer::update(double dt_ms, const Game& game) {
-    update_blip(dt_ms);
-    if (!tune_paused_ && !music_paused_for_blip_) {
-        update_tune(dt_ms, game);
-    }
-    if (!blip_active_ && !cur_tune_) {
-        ch1_ = {};
-        ch2_ = {};
-    }
+    update_sfx(dt_ms);
+    if (!tune_paused_ && !music_paused_for_blip_) update_tune(dt_ms, game);
 }
 
-void SoundPlayer::update_blip(double dt_ms) {
-    if (!blip_active_) return;
+void SoundPlayer::update_sfx(double dt_ms) {
     dt_ms = std::min(dt_ms, 32.0);
-    blip_timer_ += dt_ms;
+    const bool any_blip = sfx_active_;
 
-    double vol = 0;
-    const auto& e = blip_.envelope;
-    const double t = blip_timer_;
-    if (t < e.attack) {
-        vol = (e.attack > 0) ? kSfxPeak * (t / e.attack) : kSfxPeak;
-    } else if (t < e.attack + e.decay) {
-        const double u = (e.decay > 0) ? (t - e.attack) / e.decay : 1;
-        vol = kSfxPeak + (e.sustain - kSfxPeak) * u;
-    } else if (t < e.attack + e.decay + e.length) {
-        vol = e.sustain;
-    } else if (t < blip_duration_) {
-        const double rel = e.release > 0
-            ? (t - (e.attack + e.decay + e.length)) / e.release
-            : 1;
-        vol = e.sustain * (1.0 - rel);
-    } else {
-        vol = 0;
-    }
+    if (sfx_active_) {
+        sfx_.timer += dt_ms;
+        if (sfx_.timer >= sfx_.duration) sfx_.timer = sfx_.duration;
 
-    int idx = 0;
-    if (blip_.beat.time > 0 && !blip_freqs_.empty()) {
-        const double delta = std::max(0.0, t - blip_.beat.delay) / blip_.beat.time;
-        if (blip_.do_repeat) {
-            idx = static_cast<int>(delta) % static_cast<int>(blip_freqs_.size());
-        } else {
-            idx = std::min(static_cast<int>(delta),
-                           static_cast<int>(blip_freqs_.size()) - 1);
+        if (!sfx_.frequencies.empty()) {
+            // Bitsy sfxFrequencyAtTime, NaN and all.
+            const double n = static_cast<double>(sfx_.frequencies.size());
+            const double delta =
+                js_max(0, sfx_.timer - sfx_.blip.beat.delay) / sfx_.blip.beat.time;
+            const double pitch_delta = sfx_.blip.do_repeat ? std::fmod(delta, n)
+                                                           : js_min(delta, n - 1);
+            const double prev = sfx_.pitch_index;
+            sfx_.pitch_index = std::floor(pitch_delta);
+            const double idx = sfx_.pitch_index;
+            const double freq = (idx >= 0 && idx < n)
+                ? sfx_.frequencies[static_cast<std::size_t>(idx)]
+                : kNaN;
+            if (prev != sfx_.pitch_index) out_.frequency(SoundChannels::kSound1, freq * 100);
+            out_.volume(SoundChannels::kSound1, sfx_volume_at(sfx_.blip, sfx_.timer));
+        }
+
+        if (sfx_.timer >= sfx_.duration) {
+            out_.volume(SoundChannels::kSound1, 0);
+            sfx_active_ = false;
         }
     }
-    blip_pitch_index_ = idx;
 
-    ch1_.active = vol > 0 && !blip_freqs_.empty();
-    if (!blip_freqs_.empty()) {
-        ch1_.frequency_hz = static_cast<int>(
-            blip_freqs_[static_cast<std::size_t>(std::clamp(idx, 0,
-                static_cast<int>(blip_freqs_.size()) - 1))]);
-    }
-    ch1_.volume = static_cast<float>(std::clamp(vol / kMaxVolume, 0.0, 1.0));
-    ch1_.pulse = blip_pulse_;
-    ch1_.duration_ms = static_cast<int>(std::max(0.0, blip_duration_ - blip_timer_));
-
-    if (blip_timer_ >= blip_duration_) {
-        blip_active_ = false;
-        music_paused_for_blip_ = false;
-        ch1_ = {};
-    }
+    if (music_paused_for_blip_ && !any_blip) music_paused_for_blip_ = false;
 }
 
-void SoundPlayer::emit_note(SoundChannel& ch, const Pitch& pitch, PulseWave wave,
-                            const Tune* tune, int beat_ms) {
-    const TuneKey* key = (tune && tune->key) ? &*tune->key : nullptr;
-    if (!pitch_playable(pitch, key)) return;
-    ch.active = true;
-    ch.frequency_hz = static_cast<int>(pitch_frequency_hz(pitch, key));
-    ch.volume = static_cast<float>(kNoteVolume / kMaxVolume);
-    ch.pulse = wave;
-    ch.duration_ms = std::max(1, pitch.beats) * beat_ms;
+void SoundPlayer::play_note(const Pitch& pitch, PulseWave instrument, int channel,
+                            const TuneKey* key, double beat_len) {
+    if (pitch.beats <= 0) return;
+    if (!is_pitch_playable(pitch, key)) return;
+    const double freq = make_pitch_frequency(to_chromatic(pitch, key));
+    out_.sound(channel, pitch.beats * beat_len, freq * 100, kNoteVolume, instrument);
+}
+
+void SoundPlayer::play_tune_blip(const Pitch& pitch, const Game& game) {
+    const auto it = game.blips.find(pitch.blip_id);
+    if (it == game.blips.end()) return;
+    const TuneKey* key = cur_tune_->key ? &*cur_tune_->key : nullptr;
+    play_blip(it->second, false, &pitch, key);
 }
 
 void SoundPlayer::update_tune(double dt_ms, const Game& game) {
-    if (!cur_tune_) return;
+    if (!cur_tune_ || cur_tune_->melody.empty()) return;
+    const Tune& tune = *cur_tune_;
+    const TuneKey* key = tune.key ? &*tune.key : nullptr;
+
     beat16_timer_ += dt_ms;
-    if (beat16_timer_ < beat16_ms_) return;
+    if (beat16_timer_ < beat16_) return;
     beat16_timer_ = 0;
     ++beat16_index_;
 
     if (beat16_index_ >= kBarLength) {
         beat16_index_ = 0;
-        bar_index_ = (bar_index_ + 1) % static_cast<int>(cur_tune_->melody.size());
-        arpeggio_.clear();
-        if (cur_tune_->arpeggio != Arpeggio::Off && cur_tune_->key &&
-            bar_index_ < static_cast<int>(cur_tune_->harmony.size())) {
-            const Pitch root = cur_tune_->harmony[static_cast<std::size_t>(bar_index_)][0];
-            static constexpr int kUp[]   = {0, 2, 4, 7};
-            static constexpr int kDown[] = {7, 4, 2, 0};
-            static constexpr int k5[]    = {0, 4};
-            static constexpr int k8[]    = {0, 7};
-            const int* pat = kUp;
-            int n = 4;
-            if (cur_tune_->arpeggio == Arpeggio::Down) { pat = kDown; n = 4; }
-            else if (cur_tune_->arpeggio == Arpeggio::Int5) { pat = k5; n = 2; }
-            else if (cur_tune_->arpeggio == Arpeggio::Int8) { pat = k8; n = 2; }
-            for (int i = 0; i < n; ++i) {
-                Pitch p = root;
-                p.note = root.note + pat[i];
-                p.beats = 1;
-                arpeggio_.push_back(p);
-            }
+        bar_index_ = (bar_index_ + 1) % static_cast<int>(tune.melody.size());
+        if (tune.arpeggio != Arpeggio::Off && key &&
+            bar_index_ < static_cast<int>(tune.harmony.size())) {
+            arpeggio_ = arpeggiate_bar(tune.harmony[static_cast<std::size_t>(bar_index_)],
+                                       *key, tune.arpeggio);
         }
     }
 
-    if (cur_tune_->melody.empty()) return;
-    const auto& bar = cur_tune_->melody[static_cast<std::size_t>(bar_index_)];
-    const Pitch& a = bar[static_cast<std::size_t>(beat16_index_)];
+    const auto bar = static_cast<std::size_t>(bar_index_);
+    const auto beat = static_cast<std::size_t>(beat16_index_);
 
-    if (!blip_active_) ch1_ = {};
-    ch2_ = {};
-
-    if (a.beats > 0) {
-        if (!a.blip_id.empty()) {
-            auto it = game.blips.find(a.blip_id);
-            if (it != game.blips.end()) {
-                // Play as part of the melody without pausing the tune.
-                const bool hold = music_paused_for_blip_;
-                play_blip(it->second, game);
-                music_paused_for_blip_ = hold;
-            }
-        } else if (!blip_active_) {
-            emit_note(ch1_, a, cur_tune_->instrument_a, cur_tune_,
-                      static_cast<int>(beat16_ms_));
-        }
+    // Melody on channel 1. Any melody note cancels a blip on that channel.
+    const Pitch& a = tune.melody[bar][beat];
+    if (a.beats > 0) sfx_active_ = false;
+    if (!a.blip_id.empty() && a.beats > 0) {
+        play_tune_blip(a, game);
+    } else {
+        play_note(a, tune.instrument_a, SoundChannels::kSound1, key, beat16_);
     }
 
-    if (cur_tune_->arpeggio == Arpeggio::Off) {
-        if (bar_index_ < static_cast<int>(cur_tune_->harmony.size())) {
-            const Pitch& b =
-                cur_tune_->harmony[static_cast<std::size_t>(bar_index_)]
-                                  [static_cast<std::size_t>(beat16_index_)];
-            if (b.beats > 0) {
-                emit_note(ch2_, b, cur_tune_->instrument_b, cur_tune_,
-                          static_cast<int>(beat16_ms_));
+    // Harmony (or the arpeggio) on channel 2.
+    if (tune.arpeggio == Arpeggio::Off) {
+        if (bar < tune.harmony.size()) {
+            const Pitch& b = tune.harmony[bar][beat];
+            if (!b.blip_id.empty() && b.beats > 0) {
+                play_tune_blip(b, game);
+            } else {
+                play_note(b, tune.instrument_b, SoundChannels::kSound2, key, beat16_);
             }
         }
     } else if (!arpeggio_.empty()) {
-        const Pitch& arp = arpeggio_[static_cast<std::size_t>(beat16_index_) % arpeggio_.size()];
-        emit_note(ch2_, arp, cur_tune_->instrument_b, cur_tune_,
-                  static_cast<int>(beat16_ms_));
+        const Pitch& p = arpeggio_[beat % arpeggio_.size()];
+        if (p.beats > 0) play_note(p, tune.instrument_b, SoundChannels::kSound2, nullptr, beat16_);
     }
 }
 

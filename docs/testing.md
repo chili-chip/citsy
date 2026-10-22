@@ -84,7 +84,7 @@ tests/
 | `test_simulation.cpp` | `[engine]`, `[sim]`, `[render]`, `[dialog]`, `[fixture]` | Movement, walls, map/video compose, sprite/item drawing, exits, linear dialog |
 | `test_phase3.cpp` | `[phase3]`, `[font]`, `[sound]`, `[transition]`, `[inventory]`, `[dialog]` | Animation, fonts, RTL, blips/tunes, `{item}`/`{property}`, titles, 8.15 extras |
 | `test_textbox.cpp` | `[textbox]`, `[font]`, `[dialog]`, `[engine]`, `[rbw]`, `[fx]`, `[wrap]`, `[page]`, `[sentence]`, `[typewriter]` | Black/white textbox, `{clr}`/`{rbw}`, combinable effects, whole-word wrap, typewriter reveal, multi-screen overflow, sentences kept on one screen, `{cycle}` |
-| `test_parity.cpp` | `[parity]` | Plays every `tests/parity/cases/*.case` and compares the trace with the golden written by Bitsy 8.15 (see [tests/parity/README.md](https://github.com/chili-chip/citsy/blob/main/tests/parity/README.md)) |
+| `test_parity.cpp` | `[parity]` | Plays every `tests/parity/cases/*.case` and compares the trace (text, room, inventory, variables, and with `trace output` both sound channels and transitions frame by frame) with the golden written by Bitsy 8.15 (see [tests/parity/README.md](https://github.com/chili-chip/citsy/blob/main/tests/parity/README.md)) |
 
 As of Phase 3, the suite covers parser, simulation, dialog scripting, fonts, sound, and transitions.
 

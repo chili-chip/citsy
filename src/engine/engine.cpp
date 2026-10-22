@@ -236,7 +236,7 @@ struct Engine::Impl {
 
     void play_blip_id(const std::string& id) {
         if (id.empty()) return;
-        if (const Blip* b = game.find_blip(id)) sound.play_blip(*b, game);
+        if (const Blip* b = game.find_blip(id)) sound.play_blip(*b);
     }
 
     DialogWorld make_world() {
@@ -952,17 +952,21 @@ void Engine::update(Host& host) {
     if (!impl_->running) return;
 
     const double dt = host.delta_time_ms();
+    // Notes already playing keep sounding in real time, whatever the game does.
+    impl_->sound.advance(dt);
 
+    // The same order as Bitsy's update(): input, then a transition takes over
+    // the frame, else sound, animation, dialog and holding a direction.
+    if (!impl_->transition.active()) impl_->handle_input(host);
     if (impl_->transition.active()) {
         impl_->gfx_mode = GraphicsMode::Video;
         impl_->transition.update(dt, impl_->video, impl_->palette);
     } else {
-        impl_->handle_input(host);
-        impl_->hold_repeat(dt);
-        impl_->tick_animation(dt);
         impl_->sound.update(dt, impl_->game);
+        impl_->tick_animation(dt);
         // The typewriter waits while a blip plays, as in Bitsy.
         if (impl_->dlg.active() && !impl_->sound.blip_playing()) impl_->dialog_time_ms += dt;
+        impl_->hold_repeat(dt);
         impl_->compose();
     }
 

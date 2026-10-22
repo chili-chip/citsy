@@ -9,6 +9,8 @@
 #include "src/dialog/value.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -50,24 +52,57 @@ std::string normalize(std::string_view s) {
     return out;
 }
 
+/// One sound channel as a trace word, like synth.state() in the reference.
+std::string channel_state(const citsy::SoundChannel& ch) {
+    const long vol = std::lround(ch.volume * 15.0f);
+    if (!ch.active || ch.duration_ms <= 0 || vol <= 0 || ch.frequency_hz <= 0) return "off";
+    return std::to_string(ch.frequency_hz) + "hz v" + std::to_string(vol) + " p" +
+           std::to_string(static_cast<int>(ch.pulse));
+}
+
 struct Player {
     citsy::Engine engine;
     citsy::MockHost host;
+    bool trace_sound = false;
+    double ms = 0;
+    std::string last_sound;
+    std::vector<std::string> sound_log;
 
     explicit Player(std::string_view game) : engine(game) {
         host.dt_ms = kFrameMs;
         engine.start(host);
     }
 
-    void frames(double ms) {
-        for (double t = 0; t < ms; t += kFrameMs) engine.update(host);
+    void step() {
+        engine.update(host);
+        ms += kFrameMs;
+        const auto* snap = host.last_snapshot();
+        if (trace_sound && snap) {
+            const std::string now = "s1 " + channel_state(snap->sound1) + " | s2 " +
+                                    channel_state(snap->sound2) + " | " +
+                                    (snap->gfx_mode == citsy::GraphicsMode::Video ? "video" : "map");
+            if (now != last_sound) {
+                sound_log.push_back("output @" + citsy::js_number_to_string(ms) + " " + now);
+            }
+            last_sound = now;
+        }
+        host.snapshots.clear();
+    }
+
+    void frames(double total) {
+        for (double t = 0; t < total; t += kFrameMs) step();
     }
 
     void press(citsy::Button b) {
         host.set_button(b, true);
-        engine.update(host);
+        step();
         host.set_button(b, false);
-        engine.update(host);
+        step();
+    }
+
+    void sounds(std::vector<std::string>& out) {
+        out.insert(out.end(), sound_log.begin(), sound_log.end());
+        sound_log.clear();
     }
 
     // Text is printed once its dialog has closed (see bitsy_reference.mjs).
@@ -131,14 +166,19 @@ std::string run_case(const fs::path& case_file) {
     REQUIRE_FALSE(game.empty());
 
     Player p(read_file(case_file.parent_path() / game));
+    p.trace_sound = std::any_of(steps.begin(), steps.end(), [](const auto& w) {
+        return w[0] == "trace" && w.size() > 1 && w[1] == "output";
+    });
     std::vector<std::string> out;
     p.frames(kSettleMs);
     out.push_back("> start");
+    p.sounds(out);
     p.shown(out);
     p.snapshot(out);
 
     for (std::size_t i = 0; i < steps.size(); ++i) {
         const auto& words = steps[i];
+        if (words[0] == "trace") continue;
         out.push_back("> " + step_lines[i]);
         if (words[0] == "press") {
             for (std::size_t j = 1; j < words.size(); ++j) {
@@ -164,6 +204,7 @@ std::string run_case(const fs::path& case_file) {
         } else {
             FAIL("unknown command " << words[0]);
         }
+        p.sounds(out);
         p.shown(out);
         p.snapshot(out);
     }
@@ -188,7 +229,12 @@ TEST_CASE("parity: citsy plays each case like Bitsy 8.15", "[parity]") {
         DYNAMIC_SECTION(file.stem().string()) {
             auto golden = file;
             golden.replace_extension(".golden");
-            CHECK(run_case(file) == read_file(golden));
+            const std::string trace = run_case(file);
+            // Set CITSY_PARITY_OUT to a folder to keep citsy's traces for diffing.
+            if (const char* dir = std::getenv("CITSY_PARITY_OUT")) {
+                std::ofstream(fs::path(dir) / (file.stem().string() + ".citsy")) << trace;
+            }
+            CHECK(trace == read_file(golden));
         }
     }
 }

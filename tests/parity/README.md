@@ -28,6 +28,7 @@ A case names a game and lists steps, one per line. `#` starts a comment.
 | `press <button> ...` | For each button (`up` `down` `left` `right` `ok` `menu`): hold it one frame, release it one frame, then run 6 s of frames |
 | `read` | Press `ok` until no dialog is open |
 | `wait [ms]` | Run frames for `ms` (default 6000) |
+| `trace output` | Also trace the sound channels and the graphics mode (below) |
 
 Frames are 16 ms. Both engines use the same seeded random numbers
 (mulberry32, seed `0xC15A9`), so `{shuffle}` picks the same order.
@@ -45,6 +46,19 @@ dialog -                 # or "dialog open"; then nothing else is printed
 inventory 0=1            # items held, by id
 var n = 1                # each variable as JSON
 ```
+
+With `trace output`, each frame where a sound channel or the graphics mode
+changed adds a line before the text:
+
+```
+output @6128 s1 262hz v5 p2 | s2 131hz v5 p1 | map
+```
+
+That is the time in ms since the case started, each channel as frequency,
+volume (0 to 15) and pulse (`0` 1/8, `1` 1/4, `2` 1/2) or `off`, and `video`
+while a room transition is on screen. The reference plays Bitsy's
+`bitsy.sound()`, `frequency()` and `volume()` calls on two virtual channels; a
+note lasts its duration in real time.
 
 Text, inventory and variables wait for the dialog to close because Bitsy runs a
 script while its text types out, and citsy runs it a page at a time. Text is

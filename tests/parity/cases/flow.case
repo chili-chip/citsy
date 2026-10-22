@@ -1,6 +1,7 @@
 # Game flow: items, exit locks, a locked ending, {exit} with a transition,
 # an exit transition, {end}, restart after the ending and on Menu.
 game ../games/flow.bitsy
+trace output                 # also check when transitions start and end
 read                         # title
 press down right right right right up   # the gate, no key: locked
 read

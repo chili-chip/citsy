@@ -49,9 +49,32 @@ function seededRandom(seed) {
   };
 }
 
+// The two sound channels as a host would play them: bitsy.sound() starts a
+// note that lasts `duration` ms of real time, and frequency() and volume()
+// change the note that is playing. Frequencies are in hundredths of a hertz,
+// volume is 0 to 15.
+function createSynth() {
+  const channels = {};
+  const ch = (c) => (channels[c] ??= { left: 0, freq: 0, vol: 0, pulse: 0 });
+  return {
+    sound(c, duration, freq, vol, pulse) { Object.assign(ch(c), { left: duration, freq, vol, pulse }); },
+    frequency(c, freq) { ch(c).freq = freq; },
+    volume(c, vol) { ch(c).vol = vol; },
+    advance(dt) { for (const c of Object.values(channels)) c.left = Math.max(0, c.left - dt); },
+    // What a channel sounds like now, as one trace word.
+    state(c) {
+      const { left, freq, vol, pulse } = ch(c);
+      // A NaN frequency (a blip with BEAT 0 0 and RPT 1) is silent.
+      if (!(left > 0 && vol > 0 && freq > 0)) return "off";
+      return `${Math.round(freq / 100)}hz v${vol} p${pulse}`;
+    },
+  };
+}
+
 // A headless Bitsy System API: enough of `bitsy.*` for the engine to run.
 function createSystem(gameData) {
   const held = new Set();
+  const synth = createSynth();
   let loopFn = null;
   let nextTile = 1000;
   let gfx = 1;
@@ -70,15 +93,30 @@ function createSystem(gameData) {
     graphicsMode(m) { if (m !== undefined) gfx = m; return gfx; },
     textMode(m) { if (m !== undefined) txt = m; return txt; },
     color() {}, tile: () => nextTile++, delete() {}, fill() {}, set() {},
-    textbox() {}, sound() {}, frequency() {}, volume() {},
+    textbox() {},
+    sound: synth.sound, frequency: synth.frequency, volume: synth.volume,
     loop(fn) { loopFn = fn; },
   };
-  return { sys, held, update: (dt) => loopFn(dt) };
+  const update = (dt) => {
+    synth.advance(dt);
+    loopFn(dt);
+  };
+  return { sys, held, update, synth, gfx: () => gfx };
 }
 
 export function createEngine(gameData) {
-  const { sys, held, update } = createSystem(gameData);
-  const log = { text: "" };
+  const { sys, held, update: step, synth, gfx } = createSystem(gameData);
+  const log = { text: "", sound: [], soundOn: false, ms: 0, last: null };
+  // With `trace output` on, note each frame where a sound channel or the
+  // graphics mode (video during a transition) changes.
+  const update = (dt) => {
+    step(dt);
+    log.ms += dt;
+    if (!log.soundOn) return;
+    const now = `s1 ${synth.state(sys.SOUND1)} | s2 ${synth.state(sys.SOUND2)} | ${gfx() === sys.GFX_VIDEO ? "video" : "map"}`;
+    if (now !== log.last) log.sound.push(`@${log.ms} ${now}`);
+    log.last = now;
+  };
   const ctx = {
     bitsy: sys,
     Resources: { ...fonts },
@@ -169,9 +207,12 @@ export function runCase(caseFile) {
     eng.log.text = "";
     return text ? [`text ${JSON.stringify(text)}`] : [];
   };
+  const sounds = () => eng.log.sound.splice(0).map((l) => `output ${l}`);
+  eng.log.soundOn = steps.some((s) => s.cmd === "trace" && s.args[0] === "output");
   frames(eng, kSettleMs);
-  out.push("> start", ...shown(), ...snapshot(eng.ctx));
+  out.push("> start", ...sounds(), ...shown(), ...snapshot(eng.ctx));
   for (const step of steps) {
+    if (step.cmd === "trace") continue;
     out.push(`> ${step.line}`);
     if (step.cmd === "press") {
       for (const name of step.args) {
@@ -189,7 +230,7 @@ export function runCase(caseFile) {
     } else {
       throw new Error(`${caseFile}: unknown command ${step.cmd}`);
     }
-    out.push(...shown(), ...snapshot(eng.ctx));
+    out.push(...sounds(), ...shown(), ...snapshot(eng.ctx));
   }
   return out.join("\n") + "\n";
 }
