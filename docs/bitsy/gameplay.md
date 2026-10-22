@@ -109,7 +109,7 @@ Game settings choose how dialog is drawn:
 
 | Setting | File | Meaning |
 |---|---|---|
-| Font | `DEFAULT_FONT` / `FONT` | Built-in `ascii_small`, or a `.bitsyfont` (including fonts for other writing systems) |
+| Font | `DEFAULT_FONT` / `FONT` | Bitsy's built-in `ascii_small`, `unicode_european_small`, `unicode_european_large` and `arabic`, or a `FONT` segment. Arabic letters join as in Bitsy. `unicode_asian` is not supported |
 | Text direction | `TEXT_DIRECTION RTL` | Lines lay out from the right. Default is left to right |
 | Text mode | `! TXT_MODE 0` or `1` | `0` is the default (hirez). `1` is the editor's "chunky" mode (lorez) |
 

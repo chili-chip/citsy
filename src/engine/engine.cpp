@@ -138,8 +138,14 @@ struct Engine::Impl {
     std::size_t last_textbox_page_ = static_cast<std::size_t>(-1);
 
     explicit Impl(Game g) : game(std::move(g)) {
-        font = game.font_data.empty() ? default_font()
-                                      : parse_bitsyfont(game.font_data);
+        // A FONT segment wins; otherwise DEFAULT_FONT names a built-in font.
+        if (!game.font_data.empty()) {
+            font = parse_bitsyfont(game.font_data);
+        } else if (auto builtin = builtin_font(game.font_name)) {
+            font = std::move(*builtin);
+        } else {
+            font = default_font();
+        }
         seed_palette_fallback();
     }
 
@@ -475,7 +481,12 @@ struct Engine::Impl {
         layout.time_ms = dialog_time_ms;
 
         if (textbox_pages_dirty_) {
-            textbox_pages_ = paginate_spans(font, dlg.spans(), layout);
+            // Bitsy joins Arabic letters as the text is added to the box.
+            std::vector<TextSpan> spans = dlg.spans();
+            for (auto& sp : spans) {
+                if (!sp.is_drawing) sp.text = shape_arabic(sp.text);
+            }
+            textbox_pages_ = paginate_spans(font, spans, layout);
             if (textbox_pages_.empty()) textbox_pages_.emplace_back();
             textbox_pages_dirty_ = false;
             last_textbox_page_ = static_cast<std::size_t>(-1);

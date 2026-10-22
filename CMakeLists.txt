@@ -25,6 +25,7 @@ add_library(citsy STATIC
     src/dialog/value.cpp
     src/render/compose.cpp
     src/font/font.cpp
+    src/font/builtin_fonts.cpp
     src/sound/sound.cpp
     src/transition/transition.cpp
 )

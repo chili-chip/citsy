@@ -8,6 +8,9 @@
 #include "src/font/font.hpp"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -84,10 +87,10 @@ constexpr std::string_view kEmptyGrid =
     "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n"
     "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n";
 
-std::string game_src(std::string extra, std::string title = {}) {
+std::string game_src(std::string extra, std::string title = {}, std::string header = {}) {
     std::string s;
     s += title + "\n\n";  // line 0 is always the title
-    s += "# BITSY VERSION 8.15\n\n! ROOM_FORMAT 1\n\n";
+    s += "# BITSY VERSION 8.15\n\n! ROOM_FORMAT 1\n\n" + header;
     s += std::string(kPal) + "\nROOM 0\n" + std::string(kEmptyGrid);
     s += "PAL 0\n" + extra + "\n" + std::string(kAvatar);
     return s;
@@ -1148,4 +1151,156 @@ TEST_CASE("paginate: a sentence with a line break inside moves as a whole",
     REQUIRE(pages.size() == 2);
     CHECK(citsy::spans_to_plain(pages[0]) == "AA BB.");
     CHECK(citsy::spans_to_plain(pages[1]) == "CC\nDD\nEE FF.");
+}
+
+// ---------------------------------------------------------------------------
+// Built-in fonts (Bitsy 8.15's ascii_small, unicode_european_small,
+// unicode_european_large and arabic)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::string read_reference_font(const std::string& name) {
+    const auto path = std::filesystem::path(__FILE__).parent_path().parent_path() /
+                      "parity" / "reference" / "bitsy-8.15" / (name + ".bitsyfont");
+    std::ifstream f(path, std::ios::binary);
+    REQUIRE(f.is_open());
+    std::ostringstream buf;
+    buf << f.rdbuf();
+    return buf.str();
+}
+
+void check_same_font(const citsy::BitsyFont& a, const citsy::BitsyFont& b) {
+    CHECK(a.name == b.name);
+    CHECK(a.width == b.width);
+    CHECK(a.height == b.height);
+    REQUIRE(a.glyphs.size() == b.glyphs.size());
+    int mismatched = 0;
+    for (const auto& [cp, g] : b.glyphs) {
+        const auto it = a.glyphs.find(cp);
+        if (it == a.glyphs.end() || it->second.width != g.width ||
+            it->second.height != g.height || it->second.offset_x != g.offset_x ||
+            it->second.offset_y != g.offset_y || it->second.spacing != g.spacing ||
+            it->second.data != g.data) {
+            ++mismatched;
+        }
+    }
+    CHECK(mismatched == 0);
+    CHECK(a.missing.data == b.missing.data);
+}
+
+std::string utf8(std::u32string_view cps) {
+    std::string out;
+    for (const char32_t c : cps) {
+        if (c < 0x80) {
+            out += static_cast<char>(c);
+        } else if (c < 0x800) {
+            out += static_cast<char>(0xC0 | (c >> 6));
+            out += static_cast<char>(0x80 | (c & 0x3F));
+        } else {
+            out += static_cast<char>(0xE0 | (c >> 12));
+            out += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (c & 0x3F));
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("fonts: each built-in font matches Bitsy's .bitsyfont file", "[font][builtin]") {
+    const auto name = GENERATE(as<std::string>{}, "ascii_small", "unicode_european_small",
+                               "unicode_european_large", "arabic");
+    INFO(name);
+    const auto builtin = citsy::builtin_font(name);
+    REQUIRE(builtin.has_value());
+    check_same_font(*builtin, citsy::parse_bitsyfont(read_reference_font(name)));
+}
+
+TEST_CASE("fonts: unknown and Asian fonts are not built in", "[font][builtin]") {
+    CHECK_FALSE(citsy::builtin_font("unicode_asian").has_value());
+    CHECK_FALSE(citsy::builtin_font("no_such_font").has_value());
+}
+
+TEST_CASE("engine: DEFAULT_FONT picks a built-in font without a FONT segment",
+          "[engine][font][builtin]") {
+    const std::string l_stroke = utf8(U"\u0142");
+    const auto european = citsy::builtin_font("unicode_european_small");
+    REQUIRE(european.has_value());
+    REQUIRE(european->has(0x142));
+    REQUIRE_FALSE(citsy::default_font().has(0x142));
+    const auto& glyph = european->glyph(0x142);
+    const int glyph_ink = static_cast<int>(std::count(glyph.data.begin(), glyph.data.end(), 1));
+
+    auto white_after_typing = [](const std::string& src) {
+        citsy::Engine engine(src);
+        citsy::MockHost host;
+        engine.start(host);
+        finish_typing(engine, host);
+        const auto* snap = host.last_snapshot();
+        REQUIRE(snap != nullptr);
+        REQUIRE(snap->textbox_visible);
+        return count_eq(snap->textbox_pixels, citsy::kTextboxWhite);
+    };
+    const int with_font =
+        white_after_typing(game_src("", l_stroke, "DEFAULT_FONT unicode_european_small\n\n"));
+    // The glyph plus the 9 pixels of the next-page arrow.
+    CHECK(with_font == glyph_ink + 9);
+    // ascii_small has no ł, so it draws the missing-glyph box instead.
+    CHECK(white_after_typing(game_src("", l_stroke)) == 5 * 7 + 9);
+}
+
+// ---------------------------------------------------------------------------
+// Arabic letter joining (Bitsy dialog.js ArabicHandler)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("arabic: a lone letter keeps its isolated form", "[font][arabic]") {
+    CHECK(citsy::shape_arabic(utf8(U"\u0628")) == utf8(U"\u0628"));
+}
+
+TEST_CASE("arabic: joined letters take initial, middle and final forms", "[font][arabic]") {
+    // beh beh beh -> initial, middle, final
+    CHECK(citsy::shape_arabic(utf8(U"\u0628\u0628\u0628")) == utf8(U"\uFE91\uFE92\uFE90"));
+    CHECK(citsy::shape_arabic(utf8(U"\u0628\u0628")) == utf8(U"\uFE91\uFE90"));
+}
+
+TEST_CASE("arabic: a letter that never joins forward breaks the word", "[font][arabic]") {
+    // alef does not join the next letter, so alef beh are both isolated.
+    CHECK(citsy::shape_arabic(utf8(U"\u0627\u0628")) == utf8(U"\u0627\u0628"));
+    // beh alef: beh joins forward (initial), alef is final.
+    CHECK(citsy::shape_arabic(utf8(U"\u0628\u0627")) == utf8(U"\uFE91\uFE8E"));
+}
+
+TEST_CASE("arabic: lam alef becomes one ligature", "[font][arabic]") {
+    CHECK(citsy::shape_arabic(utf8(U"\u0644\u0627")) == utf8(U"\uFEFB"));
+    // beh lam alef: the ligature takes the final form.
+    CHECK(citsy::shape_arabic(utf8(U"\u0628\u0644\u0627")) == utf8(U"\uFE91\uFEFC"));
+    CHECK(citsy::shape_arabic(utf8(U"\u0644\u0623")) == utf8(U"\uFEF7"));
+}
+
+TEST_CASE("arabic: spaces and other letters are left alone", "[font][arabic]") {
+    CHECK(citsy::shape_arabic("hello world") == "hello world");
+    CHECK(citsy::shape_arabic(utf8(U"\u0628 \u0628")) == utf8(U"\u0628 \u0628"));
+    CHECK(citsy::shape_arabic(utf8(U"a\u0628\u0628!")) == utf8(U"a\uFE91\uFE90!"));
+}
+
+TEST_CASE("engine: Arabic dialog is drawn with joined letter forms",
+          "[engine][font][arabic]") {
+    // Shaped beh beh uses glyphs FE91 and FE90 from the arabic font.
+    const auto arabic = citsy::builtin_font("arabic");
+    REQUIRE(arabic.has_value());
+    auto ink = [&](char32_t cp) {
+        const auto& d = arabic->glyph(cp).data;
+        return static_cast<int>(std::count(d.begin(), d.end(), 1));
+    };
+    REQUIRE(ink(0xFE91) + ink(0xFE90) != 2 * ink(0x0628));
+
+    citsy::Engine engine(game_src("", utf8(U"\u0628\u0628"), "DEFAULT_FONT arabic\n\n"));
+    citsy::MockHost host;
+    engine.start(host);
+    finish_typing(engine, host);
+    const auto* snap = host.last_snapshot();
+    REQUIRE(snap != nullptr);
+    CHECK(count_eq(snap->textbox_pixels, citsy::kTextboxWhite) ==
+          ink(0xFE91) + ink(0xFE90) + 9);
 }

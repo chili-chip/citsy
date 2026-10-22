@@ -240,7 +240,7 @@ Modules inside the core library:
 | `engine/` | Main loop, avatar movement, collision, room transitions |
 | `dialog/` | Script interpreter: variables, conditionals, lists, `{print*}`, `{ava}`/`{pal}`/`{exit}`/`{end}` |
 | `render/` | Logical renderer — fills video/map/textbox memory blocks (no GPU) |
-| `font/` | Built-in `ascii_small` and custom `.bitsyfont` glyph rendering into textbox buffer |
+| `font/` | Bitsy's built-in fonts, custom `.bitsyfont` glyph rendering into textbox buffer, Arabic letter joining |
 | `sound/` | Two-channel square-wave parameter generation (blips + tunes) |
 | `transition/` | Room transition effects (fade, wave, tunnel, slide) in video mode |
 
@@ -322,7 +322,7 @@ citsy/
 │   ├── engine/             # Simulation & game loop
 │   ├── dialog/             # Script interpreter
 │   ├── render/             # Logical framebuffer compositor
-│   ├── font/               # .bitsyfont + ascii_small
+│   ├── font/               # .bitsyfont + Bitsy's built-in fonts
 │   ├── sound/              # Blips and tunes → channel params
 │   └── transition/         # Exit transition effects
 ├── backends/
@@ -469,4 +469,4 @@ Compatibility fixtures will be drawn from the [Bitsy community](https://bitsy.or
 
 citsy is released under the [MIT License](LICENSE).
 
-The built-in `ascii_small` font data is derived from [Bitsy](https://codeberg.org/adamledoux/bitsy), also MIT licensed; its copyright notice is kept in [LICENSE](LICENSE). Games you create with the Bitsy editor remain yours.
+The built-in font data is derived from [Bitsy](https://codeberg.org/adamledoux/bitsy), also MIT licensed; its copyright notice is kept in [LICENSE](LICENSE). Games you create with the Bitsy editor remain yours.

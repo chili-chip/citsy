@@ -1,4 +1,5 @@
 #include "src/font/font.hpp"
+#include "src/font/builtin_fonts.hpp"
 
 #include <cmath>
 #include <algorithm>
@@ -6,135 +7,6 @@
 
 namespace citsy {
 namespace {
-
-struct PackedGlyph {
-    char32_t cp;
-    std::uint8_t rows[8];
-};
-
-// Bitsy ascii_small: 6×8, rows packed in the low 6 bits (MSB = left pixel).
-// Glyph data derived from Bitsy (MIT, Copyright (c) 2016-present, Bitsy
-// authors); see the Bitsy notice in LICENSE.
-constexpr PackedGlyph kAsciiSmall[] = {
-    {0, {0, 0, 0, 0, 0, 0, 0, 0}},
-    {32, {0, 0, 0, 0, 0, 0, 0, 0}},
-    {33, {4, 14, 14, 4, 4, 0, 4, 0}},
-    {34, {27, 27, 18, 0, 0, 0, 0, 0}},
-    {35, {0, 10, 31, 10, 10, 31, 10, 0}},
-    {36, {8, 14, 16, 12, 2, 28, 4, 0}},
-    {37, {25, 25, 2, 4, 8, 19, 19, 0}},
-    {38, {8, 20, 20, 8, 21, 18, 13, 0}},
-    {39, {12, 12, 8, 0, 0, 0, 0, 0}},
-    {40, {4, 8, 8, 8, 8, 8, 4, 0}},
-    {41, {8, 4, 4, 4, 4, 4, 8, 0}},
-    {42, {0, 10, 14, 31, 14, 10, 0, 0}},
-    {43, {0, 4, 4, 31, 4, 4, 0, 0}},
-    {44, {0, 0, 0, 0, 0, 12, 12, 8}},
-    {45, {0, 0, 0, 31, 0, 0, 0, 0}},
-    {46, {0, 0, 0, 0, 0, 12, 12, 0}},
-    {47, {0, 1, 2, 4, 8, 16, 0, 0}},
-    {48, {14, 17, 19, 21, 25, 17, 14, 0}},
-    {49, {4, 12, 4, 4, 4, 4, 14, 0}},
-    {50, {14, 17, 1, 6, 8, 16, 31, 0}},
-    {51, {14, 17, 1, 14, 1, 17, 14, 0}},
-    {52, {2, 6, 10, 18, 31, 2, 2, 0}},
-    {53, {31, 16, 16, 30, 1, 17, 14, 0}},
-    {54, {6, 8, 16, 30, 17, 17, 14, 0}},
-    {55, {31, 1, 2, 4, 8, 8, 8, 0}},
-    {56, {14, 17, 17, 14, 17, 17, 14, 0}},
-    {57, {14, 17, 17, 15, 1, 2, 12, 0}},
-    {58, {0, 0, 12, 12, 0, 12, 12, 0}},
-    {59, {0, 0, 12, 12, 0, 12, 12, 8}},
-    {60, {2, 4, 8, 16, 8, 4, 2, 0}},
-    {61, {0, 0, 31, 0, 0, 31, 0, 0}},
-    {62, {8, 4, 2, 1, 2, 4, 8, 0}},
-    {63, {14, 17, 1, 6, 4, 0, 4, 0}},
-    {64, {14, 17, 23, 21, 23, 16, 14, 0}},
-    {65, {14, 17, 17, 17, 31, 17, 17, 0}},
-    {66, {30, 17, 17, 30, 17, 17, 30, 0}},
-    {67, {14, 17, 16, 16, 16, 17, 14, 0}},
-    {68, {30, 17, 17, 17, 17, 17, 30, 0}},
-    {69, {31, 16, 16, 30, 16, 16, 31, 0}},
-    {70, {31, 16, 16, 30, 16, 16, 16, 0}},
-    {71, {14, 17, 16, 23, 17, 17, 15, 0}},
-    {72, {17, 17, 17, 31, 17, 17, 17, 0}},
-    {73, {14, 4, 4, 4, 4, 4, 14, 0}},
-    {74, {1, 1, 1, 1, 17, 17, 14, 0}},
-    {75, {17, 18, 20, 24, 20, 18, 17, 0}},
-    {76, {16, 16, 16, 16, 16, 16, 31, 0}},
-    {77, {17, 27, 21, 17, 17, 17, 17, 0}},
-    {78, {17, 25, 21, 19, 17, 17, 17, 0}},
-    {79, {14, 17, 17, 17, 17, 17, 14, 0}},
-    {80, {30, 17, 17, 30, 16, 16, 16, 0}},
-    {81, {14, 17, 17, 17, 21, 18, 13, 0}},
-    {82, {30, 17, 17, 30, 18, 17, 17, 0}},
-    {83, {14, 17, 16, 14, 1, 17, 14, 0}},
-    {84, {31, 4, 4, 4, 4, 4, 4, 0}},
-    {85, {17, 17, 17, 17, 17, 17, 14, 0}},
-    {86, {17, 17, 17, 17, 17, 10, 4, 0}},
-    {87, {17, 17, 21, 21, 21, 21, 10, 0}},
-    {88, {17, 17, 10, 4, 10, 17, 17, 0}},
-    {89, {17, 17, 17, 10, 4, 4, 4, 0}},
-    {90, {30, 2, 4, 8, 16, 16, 30, 0}},
-    {91, {14, 8, 8, 8, 8, 8, 14, 0}},
-    {92, {0, 16, 8, 4, 2, 1, 0, 0}},
-    {93, {14, 2, 2, 2, 2, 2, 14, 0}},
-    {94, {4, 10, 17, 0, 0, 0, 0, 0}},
-    {95, {0, 0, 0, 0, 0, 0, 0, 63}},
-    {96, {12, 12, 4, 0, 0, 0, 0, 0}},
-    {97, {0, 0, 14, 1, 15, 17, 15, 0}},
-    {98, {16, 16, 30, 17, 17, 17, 30, 0}},
-    {99, {0, 0, 14, 17, 16, 17, 14, 0}},
-    {100, {1, 1, 15, 17, 17, 17, 15, 0}},
-    {101, {0, 0, 14, 17, 30, 16, 14, 0}},
-    {102, {6, 8, 8, 30, 8, 8, 8, 0}},
-    {103, {0, 0, 15, 17, 17, 15, 1, 14}},
-    {104, {16, 16, 28, 18, 18, 18, 18, 0}},
-    {105, {4, 0, 4, 4, 4, 4, 6, 0}},
-    {106, {2, 0, 6, 2, 2, 2, 18, 12}},
-    {107, {16, 16, 18, 20, 24, 20, 18, 0}},
-    {108, {4, 4, 4, 4, 4, 4, 6, 0}},
-    {109, {0, 0, 26, 21, 21, 17, 17, 0}},
-    {110, {0, 0, 28, 18, 18, 18, 18, 0}},
-    {111, {0, 0, 14, 17, 17, 17, 14, 0}},
-    {112, {0, 0, 30, 17, 17, 17, 30, 16}},
-    {113, {0, 0, 15, 17, 17, 17, 15, 1}},
-    {114, {0, 0, 22, 9, 8, 8, 28, 0}},
-    {115, {0, 0, 14, 16, 14, 1, 14, 0}},
-    {116, {0, 8, 30, 8, 8, 10, 4, 0}},
-    {117, {0, 0, 18, 18, 18, 22, 10, 0}},
-    {118, {0, 0, 17, 17, 17, 10, 4, 0}},
-    {119, {0, 0, 17, 17, 21, 31, 10, 0}},
-    {120, {0, 0, 18, 18, 12, 18, 18, 0}},
-    {121, {0, 0, 18, 18, 18, 14, 4, 24}},
-    {122, {0, 0, 30, 2, 12, 16, 30, 0}},
-    {123, {6, 8, 8, 24, 8, 8, 6, 0}},
-    {124, {4, 4, 4, 4, 4, 4, 4, 4}},
-    {125, {12, 2, 2, 3, 2, 2, 12, 0}},
-    {126, {0, 0, 0, 10, 20, 0, 0, 0}},
-    {160, {0, 0, 0, 0, 0, 0, 0, 0}},
-    {8216, {12, 12, 8, 0, 0, 0, 0, 0}},
-    {8217, {12, 12, 8, 0, 0, 0, 0, 0}},
-    {8220, {27, 27, 18, 0, 0, 0, 0, 0}},
-    {8221, {27, 27, 18, 0, 0, 0, 0, 0}},
-};
-
-FontGlyph packed_to_glyph(const PackedGlyph& p, int w, int h) {
-    FontGlyph g;
-    g.width = w;
-    g.height = h;
-    g.spacing = w;
-    g.data.resize(static_cast<std::size_t>(w * h), 0);
-    for (int y = 0; y < h; ++y) {
-        const std::uint8_t row = p.rows[y];
-        for (int x = 0; x < w; ++x) {
-            const int bit = w - 1 - x;  // left pixel is high bit of the 6-bit field
-            g.data[static_cast<std::size_t>(y * w + x)] =
-                (row & (1u << bit)) ? 1u : 0u;
-        }
-    }
-    return g;
-}
 
 void make_missing(BitsyFont& font) {
     font.missing.width = font.width;
@@ -201,22 +73,13 @@ char32_t next_codepoint(std::string_view& s) {
 }
 
 BitsyFont default_font() {
-    BitsyFont font;
-    font.name = "ascii_small";
-    font.width = 6;
-    font.height = 8;
-    for (const auto& p : kAsciiSmall) {
-        font.glyphs[p.cp] = packed_to_glyph(p, 6, 8);
-    }
-    make_missing(font);
-    return font;
+    return *builtin_font("ascii_small");
 }
 
 BitsyFont parse_bitsyfont(std::string_view data) {
-    BitsyFont font = default_font();
-    if (data.empty()) return font;
+    if (data.empty()) return default_font();
 
-    font.glyphs.clear();
+    BitsyFont font;
     bool in_char = false;
     bool in_props = false;
     char32_t cur_cp = 0;
@@ -313,6 +176,169 @@ BitsyFont parse_bitsyfont(std::string_view data) {
 
     make_missing(font);
     return font;
+}
+
+std::optional<BitsyFont> builtin_font(std::string_view name) {
+    for (const BuiltinFont& src : builtin_font_table()) {
+        if (src.name != name) continue;
+        BitsyFont font;
+        font.name = std::string(src.name);
+        font.width = src.width;
+        font.height = src.height;
+        for (const BuiltinGlyph& bg : src.glyphs) {
+            FontGlyph g;
+            g.width = bg.width;
+            g.height = bg.height;
+            g.offset_x = bg.offset_x;
+            g.offset_y = bg.offset_y;
+            g.spacing = bg.spacing;
+            const std::size_t n = static_cast<std::size_t>(bg.width) * bg.height;
+            g.data.resize(n);
+            for (std::size_t i = 0; i < n; ++i) {
+                const std::size_t bit = bg.bit_offset + i;
+                g.data[i] = (src.bits[bit / 8] >> (7 - bit % 8)) & 1u;
+            }
+            font.glyphs[static_cast<char32_t>(bg.codepoint)] = std::move(g);
+        }
+        make_missing(font);
+        return font;
+    }
+    return std::nullopt;
+}
+
+namespace {
+
+// Bitsy dialog.js ArabicHandler.
+constexpr char32_t kArabicFirst = 0x0621;
+constexpr char32_t kArabicLast = 0x064E;
+
+/// Isolated, final, initial and middle forms for U+0621..U+064E.
+constexpr char32_t kArabicForms[kArabicLast - kArabicFirst + 1][4] = {
+    {0xFE80, 0xFE80, 0xFE80, 0xFE80},  // hamza
+    {0xFE81, 0xFE82, 0xFE81, 0xFE82},  // alef with madda above
+    {0xFE83, 0xFE84, 0xFE83, 0xFE84},  // alef with hamza above
+    {0xFE85, 0xFE86, 0xFE85, 0xFE86},  // waw with hamza above
+    {0xFE87, 0xFE88, 0xFE87, 0xFE88},  // alef with hamza below
+    {0xFE89, 0xFE8A, 0xFE8B, 0xFE8C},  // yeh with hamza above
+    {0xFE8D, 0xFE8E, 0xFE8D, 0xFE8E},  // alef
+    {0xFE8F, 0xFE90, 0xFE91, 0xFE92},  // beh
+    {0xFE93, 0xFE94, 0xFE93, 0xFE94},  // teh marbuta
+    {0xFE95, 0xFE96, 0xFE97, 0xFE98},  // teh
+    {0xFE99, 0xFE9A, 0xFE9B, 0xFE9C},  // theh
+    {0xFE9D, 0xFE9E, 0xFE9F, 0xFEA0},  // jeem
+    {0xFEA1, 0xFEA2, 0xFEA3, 0xFEA4},  // hah
+    {0xFEA5, 0xFEA6, 0xFEA7, 0xFEA8},  // khah
+    {0xFEA9, 0xFEAA, 0xFEA9, 0xFEAA},  // dal
+    {0xFEAB, 0xFEAC, 0xFEAB, 0xFEAC},  // thal
+    {0xFEAD, 0xFEAE, 0xFEAD, 0xFEAE},  // reh
+    {0xFEAF, 0xFEB0, 0xFEAF, 0xFEB0},  // zain
+    {0xFEB1, 0xFEB2, 0xFEB3, 0xFEB4},  // seen
+    {0xFEB5, 0xFEB6, 0xFEB7, 0xFEB8},  // sheen
+    {0xFEB9, 0xFEBA, 0xFEBB, 0xFEBC},  // sad
+    {0xFEBD, 0xFEBE, 0xFEBF, 0xFEC0},  // dad
+    {0xFEC1, 0xFEC2, 0xFEC3, 0xFEC4},  // tah
+    {0xFEC5, 0xFEC6, 0xFEC7, 0xFEC8},  // zah
+    {0xFEC9, 0xFECA, 0xFECB, 0xFECC},  // ain
+    {0xFECD, 0xFECE, 0xFECF, 0xFED0},  // ghain
+    {0, 0, 0, 0},                      // U+063B..U+063F are unassigned here
+    {0, 0, 0, 0},
+    {0, 0, 0, 0},
+    {0, 0, 0, 0},
+    {0, 0, 0, 0},
+    {0x0640, 0x0640, 0x0640, 0x0640},  // tatweel
+    {0xFED1, 0xFED2, 0xFED3, 0xFED4},  // feh
+    {0xFED5, 0xFED6, 0xFED7, 0xFED8},  // qaf
+    {0xFED9, 0xFEDA, 0xFEDB, 0xFEDC},  // kaf
+    {0xFEDD, 0xFEDE, 0xFEDF, 0xFEE0},  // lam
+    {0xFEE1, 0xFEE2, 0xFEE3, 0xFEE4},  // meem
+    {0xFEE5, 0xFEE6, 0xFEE7, 0xFEE8},  // noon
+    {0xFEE9, 0xFEEA, 0xFEEB, 0xFEEC},  // heh
+    {0xFEED, 0xFEEE, 0xFEED, 0xFEEE},  // waw
+    {0xFEEF, 0xFEF0, 0xFBE8, 0xFBE9},  // alef maksura
+    {0xFEF1, 0xFEF2, 0xFEF3, 0xFEF4},  // yeh
+    {0xFEF5, 0xFEF6, 0xFEF5, 0xFEF6},  // lam alef with madda (Bitsy's slot)
+    {0xFEF7, 0xFEF8, 0xFEF7, 0xFEF8},  // lam alef with hamza above
+    {0xFEF9, 0xFEFA, 0xFEF9, 0xFEFA},  // lam alef with hamza below
+    {0xFEFB, 0xFEFC, 0xFEFB, 0xFEFC},  // lam alef
+};
+
+enum ArabicForm { kIsolated = 0, kFinal = 1, kInitial = 2, kMiddle = 3 };
+
+bool is_arabic(char32_t c) { return c >= kArabicFirst && c <= kArabicLast; }
+
+bool is_disconnected(char32_t c) {
+    switch (c) {
+    case 0x0621: case 0x0622: case 0x0623: case 0x0624: case 0x0625: case 0x0627:
+    case 0x062F: case 0x0630: case 0x0631: case 0x0632: case 0x0648: case 0x0649:
+    case 0x064B: case 0x064C: case 0x064D: case 0x064E:
+        return true;
+    default:
+        return false;
+    }
+}
+
+char32_t arabic_form(char32_t c, int form) {
+    return kArabicForms[c - kArabicFirst][form];
+}
+
+void append_utf8(std::string& out, char32_t c) {
+    if (c < 0x80) {
+        out += static_cast<char>(c);
+    } else if (c < 0x800) {
+        out += static_cast<char>(0xC0 | (c >> 6));
+        out += static_cast<char>(0x80 | (c & 0x3F));
+    } else if (c < 0x10000) {
+        out += static_cast<char>(0xE0 | (c >> 12));
+        out += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (c & 0x3F));
+    } else {
+        out += static_cast<char>(0xF0 | (c >> 18));
+        out += static_cast<char>(0x80 | ((c >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (c & 0x3F));
+    }
+}
+
+} // namespace
+
+std::string shape_arabic(std::string_view utf8) {
+    std::vector<char32_t> cps;
+    bool any = false;
+    for (std::string_view rest = utf8; !rest.empty();) {
+        cps.push_back(next_codepoint(rest));
+        any = any || is_arabic(cps.back());
+    }
+    if (!any) return std::string(utf8);
+
+    std::string out;
+    for (std::size_t i = 0; i < cps.size(); ++i) {
+        const char32_t c = cps[i];
+        if (!is_arabic(c)) {
+            append_utf8(out, c);
+            continue;
+        }
+        const bool to_prev = i > 0 && is_arabic(cps[i - 1]) && !is_disconnected(cps[i - 1]);
+        const bool to_next = i + 1 < cps.size() && is_arabic(cps[i + 1]) && !is_disconnected(c);
+        const int form = to_prev ? (to_next ? kMiddle : kFinal) : (to_next ? kInitial : kIsolated);
+
+        if (c == 0x0644 && to_next) {
+            char32_t ligature = 0;
+            switch (cps[i + 1]) {
+            case 0x0622: ligature = arabic_form(0x064B, form); break;
+            case 0x0623: ligature = arabic_form(0x064C, form); break;
+            case 0x0625: ligature = arabic_form(0x064D, form); break;
+            case 0x0627: ligature = arabic_form(0x064E, form); break;
+            default: break;
+            }
+            if (ligature) {
+                append_utf8(out, ligature);
+                ++i;
+                continue;
+            }
+        }
+        append_utf8(out, form == kIsolated ? c : arabic_form(c, form));
+    }
+    return out;
 }
 
 std::string spans_to_plain(const std::vector<TextSpan>& spans) {

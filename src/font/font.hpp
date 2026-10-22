@@ -6,6 +6,7 @@
 
 #include <array>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -48,6 +49,15 @@ public:
 
 /// Parse a `.bitsyfont` / FONT segment body.
 [[nodiscard]] BitsyFont parse_bitsyfont(std::string_view data);
+
+/// Bitsy 8.15's built-in fonts by name: `ascii_small`, `unicode_european_small`,
+/// `unicode_european_large` and `arabic`. Empty for any other name.
+[[nodiscard]] std::optional<BitsyFont> builtin_font(std::string_view name);
+
+/// Bitsy's Arabic letter joining (dialog.js `ArabicHandler`): each Arabic
+/// letter becomes its isolated, initial, middle or final presentation form,
+/// and lam alef becomes one ligature. Other text is left alone.
+[[nodiscard]] std::string shape_arabic(std::string_view utf8);
 
 /// Decode the next UTF-8 code point from @p s, advancing the view.
 [[nodiscard]] char32_t next_codepoint(std::string_view& s);

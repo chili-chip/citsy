@@ -620,7 +620,7 @@ Quick lookup of top-level `.bitsy` segment keywords:
 | `VAR` | Variable | name | `VAR score` |
 | `END` | Ending | string | `END 0` |
 | `FONT` | Custom font | — | Parsed (`.bitsyfont`) |
-| `DEFAULT_FONT` | Font name | — | `ascii_small` if omitted |
+| `DEFAULT_FONT` | Font name | — | `ascii_small` if omitted. `ascii_small`, `unicode_european_small`, `unicode_european_large` and `arabic` are built in; `unicode_asian` is not supported and falls back to `ascii_small` |
 | `TEXT_DIRECTION` | `LTR` / `RTL` | — | Right-to-left dialog layout |
 | `TUNE` | Music | string | Melody + harmony bars. See [Sound](sound.md) |
 | `BLIP` | Sound effect | string | Pitches, envelope, pulse. See [Sound](sound.md) |
