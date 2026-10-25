@@ -67,6 +67,11 @@ layout (three rows of 104 pixels, sentences kept on one screen).
 
 ## Reference files
 
-`reference/bitsy-8.15` holds Bitsy 8.15's engine scripts and fonts unchanged,
-under Bitsy's MIT license (`LICENSE.md`, `CREDITS.md`). They are only used by
-these tests and are not part of citsy.
+Bitsy itself is not stored in this repository. `scripts/fetch_bitsy.cmake`
+downloads Bitsy 8.15's engine scripts and fonts, unchanged, from the `v8.15`
+commit on [Codeberg](https://codeberg.org/adamledoux/bitsy) into
+`reference/bitsy-8.15` (ignored by git) and checks each file's SHA-256.
+`bitsy_reference.mjs`, `scripts/gen_builtin_fonts.py` and a CMake configure
+with tests on all run it first, so there is nothing to do by hand; it needs
+network access the first time. The files are under Bitsy's MIT license
+(`LICENSE.md`, `CREDITS.md` in the download) and are only used by the tests.

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Plays each tests/parity/cases/*.case file in the Bitsy 8.15 reference engine
-// (tests/parity/reference/bitsy-8.15) and writes the matching .golden trace.
+// (tests/parity/reference/bitsy-8.15, downloaded by scripts/fetch_bitsy.cmake
+// on first use) and writes the matching .golden trace.
 // tests/unit/test_parity.cpp plays the same cases in citsy and compares.
 //
 //   node tests/parity/bitsy_reference.mjs           # rewrite every golden
@@ -9,6 +10,7 @@
 //
 // Case format and trace format: tests/parity/README.md.
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import vm from "node:vm";
@@ -17,6 +19,11 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const refDir = path.join(here, "reference", "bitsy-8.15");
 const casesDir = path.join(here, "cases");
+
+// Bitsy itself is not stored in the repo; download it (checked by hash).
+execFileSync("cmake", ["-P", path.join(here, "..", "..", "scripts", "fetch_bitsy.cmake")], {
+  stdio: ["ignore", "ignore", "inherit"],
+});
 
 // Load order matches the editor's export template.
 const engineFiles = [

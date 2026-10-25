@@ -74,6 +74,10 @@ if(CITSY_BUILD_TESTS)
     )
     FetchContent_MakeAvailable(Catch2)
 
+    # Bitsy 8.15's engine and fonts, which the built-in font test compares
+    # against (scripts/fetch_bitsy.cmake). They are not stored in the repo.
+    include(${CMAKE_CURRENT_SOURCE_DIR}/scripts/fetch_bitsy.cmake)
+
     add_executable(citsy_tests
         tests/unit/test_parser.cpp
         tests/unit/test_engine.cpp
