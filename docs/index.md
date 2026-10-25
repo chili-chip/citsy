@@ -92,4 +92,4 @@ Then embed the engine by implementing `citsy::Host`. See [Getting started](getti
 
 !!! note "Not affiliated"
 
-    This is a clean-room engine inspired by Bitsy. It is not affiliated with Adam Le Doux or the official Bitsy project. Game data produced by the Bitsy editor (`.bitsy` files) is the intended interchange format.
+    citsy is an independent C++ reimplementation of Bitsy, written to behave like the reference JavaScript engine. Its built-in fonts come from Bitsy (MIT, © Bitsy authors). Thanks to Adam Le Doux and the Bitsy contributors. citsy is not affiliated with Adam Le Doux or the official Bitsy project. Game data produced by the Bitsy editor (`.bitsy` files) is the intended interchange format.
