@@ -4,7 +4,7 @@ A headless C++ reimplementation of the [Bitsy](https://codeberg.org/adamledoux/b
 
 citsy is **engine only**. It does not link against 32blit or any other graphics or audio library. Instead, it exposes a small **Host System API** that a separate front-end (your renderer, your platform layer) implements. The engine owns game logic, simulation, scripting, and framebuffers; the host owns pixels on screen, input devices, and speakers.
 
-> **Note:** This project is a clean-room engine inspired by Bitsy. It is not affiliated with Adam Le Doux or the official Bitsy project. Game data produced by the Bitsy editor (`.bitsy` files) is the intended interchange format.
+> **Note:** citsy is an independent C++ reimplementation of Bitsy, written to behave like the reference JavaScript engine. Its built-in fonts come from Bitsy (MIT, © Bitsy authors). Thanks to Adam Le Doux and the Bitsy contributors. citsy is not affiliated with Adam Le Doux or the official Bitsy project. Game data produced by the Bitsy editor (`.bitsy` files) is the intended interchange format.
 
 ---
 
