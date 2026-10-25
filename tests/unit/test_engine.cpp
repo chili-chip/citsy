@@ -62,17 +62,17 @@ TEST_CASE("engine: construct from string", "[engine]") {
 
 TEST_CASE("engine: malformed palette throws ParseError", "[engine]") {
     // Color component out of range (300 > 255) must throw.
-    CHECK_THROWS_AS(citsy::Engine("PAL 0\nNAME bad\n300,0,0\n"), citsy::ParseError);
+    CHECK_THROWS_AS(citsy::Engine("title\n\nPAL 0\nNAME bad\n300,0,0\n"), citsy::ParseError);
 }
 
 TEST_CASE("engine: tile with no pixel data throws ParseError", "[engine]") {
     // TIL segment with an empty body must throw.
-    CHECK_THROWS_AS(citsy::Engine("TIL a\n"), citsy::ParseError);
+    CHECK_THROWS_AS(citsy::Engine("title\n\nTIL a\n"), citsy::ParseError);
 }
 
 TEST_CASE("engine: tile row wrong length throws ParseError", "[engine]") {
     // 7-char pixel row instead of 8 must throw.
-    constexpr std::string_view bad = "TIL a\n1111111\n10000001\n10000001\n10000001\n10000001\n10000001\n10000001\n11111111\n";
+    constexpr std::string_view bad = "title\n\nTIL a\n1111111\n10000001\n10000001\n10000001\n10000001\n10000001\n10000001\n11111111\n";
     CHECK_THROWS_AS(citsy::Engine(bad), citsy::ParseError);
 }
 

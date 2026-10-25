@@ -22,7 +22,9 @@ SOFTWARE.
 
 ---
 
-The ascii_small font data in src/font/font.cpp is derived from Bitsy
+The built-in font data in src/font/builtin_fonts.cpp (ascii_small,
+unicode_european_small, unicode_european_large and arabic) and the Arabic
+letter forms in src/font/font.cpp are derived from Bitsy
 (https://codeberg.org/adamledoux/bitsy), which carries the following notice:
 
 MIT License

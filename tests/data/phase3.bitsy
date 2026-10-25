@@ -1,6 +1,6 @@
-# BITSY VERSION 8.15
+phase3 fixture
 
-NAME phase3 fixture
+# BITSY VERSION 8.15
 
 ! ROOM_FORMAT 1
 ! TXT_MODE 0
@@ -93,10 +93,7 @@ DLG DLG_KEY
 BLIP 1
 
 DLG DLG_KEY
-{
-  {got_key = 1}
-}
-"A shiny key."
+{got_key = 1}A shiny key.
 
 VAR got_key
 0

@@ -21,10 +21,11 @@ option(CITSY_BUILD_WEB              "Build the Emscripten browser player" OFF)
 add_library(citsy STATIC
     src/parser/parser.cpp
     src/engine/engine.cpp
-    src/dialog/linear.cpp
     src/dialog/script.cpp
+    src/dialog/value.cpp
     src/render/compose.cpp
     src/font/font.cpp
+    src/font/builtin_fonts.cpp
     src/sound/sound.cpp
     src/transition/transition.cpp
 )
@@ -73,6 +74,10 @@ if(CITSY_BUILD_TESTS)
     )
     FetchContent_MakeAvailable(Catch2)
 
+    # Bitsy 8.15's engine and fonts, which the built-in font test compares
+    # against (scripts/fetch_bitsy.cmake). They are not stored in the repo.
+    include(${CMAKE_CURRENT_SOURCE_DIR}/scripts/fetch_bitsy.cmake)
+
     add_executable(citsy_tests
         tests/unit/test_parser.cpp
         tests/unit/test_engine.cpp
@@ -80,6 +85,7 @@ if(CITSY_BUILD_TESTS)
         tests/unit/test_simulation.cpp
         tests/unit/test_phase3.cpp
         tests/unit/test_textbox.cpp
+        tests/unit/test_parity.cpp
     )
 
     target_link_libraries(citsy_tests

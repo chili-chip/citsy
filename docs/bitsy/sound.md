@@ -2,6 +2,8 @@
 
 Bitsy games use two square-wave channels. citsy turns blips and tunes into `SoundChannel` parameters and passes them to `Host::present()`. The host plays the waves. The engine does not write PCM.
 
+The blip and tune player is a port of Bitsy 8.15's `sound.js`, and the parity tests compare what both channels play on every frame with Bitsy itself ([testing](../testing.md)).
+
 This page restates the [blip](https://make.bitsy.org/docs/tools/blip/) and [tune](https://make.bitsy.org/docs/tools/tune/) tools, plus the sound section of the [Bitsy System API](https://make.bitsy.org/docs/technical/system/) (v0.2).
 
 ---
@@ -14,6 +16,15 @@ This page restates the [blip](https://make.bitsy.org/docs/tools/blip/) and [tune
 | 2 | `SOUND2` | Harmony |
 
 A blip pauses the tune until the blip finishes. Opening a dialog pauses the tune and resumes it when the box closes. While a room transition is on screen, the tune clock does not advance.
+
+### What a channel holds
+
+Each frame, `present()` gets what each channel should sound like right now. A channel is `active` while a note is playing: `duration_ms` is the time the note has left, and the host only has to play or stop the wave. As in Bitsy:
+
+- A tune note lasts its length in sixteenths, so a held note keeps sounding over the steps after it.
+- Stopping, pausing or changing the tune does not cut the notes already playing; they end on their own.
+- A melody note cancels a blip that is part of the tune, since both use channel 1.
+- A blip played as a tune note (`C5~2`) is moved up or down to that note's pitch and does not pause the tune.
 
 ### Pulse waves
 
@@ -33,7 +44,7 @@ The system API and `present()` use different units.
 
 | | Bitsy `bitsy.sound` | citsy `SoundChannel` |
 |---|---|---|
-| Frequency | decihertz (Hz × 10) | `frequency_hz` in hertz |
+| Frequency | hundredths of a hertz (Hz × 100) | `frequency_hz` in hertz, rounded |
 | Volume | integer 0–15 | `volume` in the range 0.0–1.0 (`n / 15`) |
 | Duration | milliseconds | `duration_ms` |
 | Pulse | `PULSE_*` constant | `PulseWave` |
@@ -56,7 +67,9 @@ The file stores the result of the editor's generators (pickup, greeting, bloop, 
 | Instrument | One of the three pulse waves |
 | Repeat | Whether the pitch pattern loops |
 
-citsy plays the pitches in order on channel 1 for the envelope's total length, and scales sustain by the envelope.
+citsy plays the pitches in order on channel 1 for the envelope's total length, and scales sustain by the envelope. The envelope rises to a peak of 10 during the attack, falls to the sustain level during the decay, holds it for the length, then fades out during the release.
+
+With `BEAT 0 0` (no time between pitches) a blip plays only its last pitch, and with `RPT 1` as well it has no pitch at all and stays silent. That is what Bitsy does.
 
 ---
 
@@ -85,7 +98,9 @@ Tempo is how long one sixteenth lasts. The editor names match these values:
 
 ### Key
 
-The editor can limit which scale degrees are available. The file stores the allowed degrees and their chromatic notes. citsy skips a solfa note whose degree is outside that scale.
+The editor can limit which scale degrees are available. The file stores the allowed degrees and their chromatic notes. citsy skips a solfa note whose degree is outside that scale. In a tune with a key every note is read as a scale degree.
+
+A step written as a bare number (`2`) is a C in octave 4 of that length, as in Bitsy; `0` is a rest.
 
 | Editor key | Scale |
 |---|---|

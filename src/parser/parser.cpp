@@ -223,7 +223,7 @@ public:
     Game parse() {
         Game game;
 
-        parse_title_if_present(game);
+        parse_title(game);
 
         while (pos_ < lines_.size()) {
             // Skip blank lines between segments.
@@ -327,55 +327,40 @@ private:
         return static_cast<int>(pos_) + 1;  // 1-based
     }
 
-    [[nodiscard]] static bool is_segment_keyword(std::string_view kw) {
-        return kw == "PAL" || kw == "ROOM" || kw == "SET" || kw == "TIL" ||
-               kw == "SPR" || kw == "ITM" || kw == "DLG" || kw == "END" ||
-               kw == "VAR" || kw == "FONT" || kw == "DEFAULT_FONT" ||
-               kw == "TEXT_DIRECTION" || kw == "TUNE" || kw == "BLIP" ||
-               kw == "NAME" || kw == "EXT";
+    // Bitsy's ReadDialogScript: one line, or a `"""` line through the closing
+    // `"""` line (both kept, as the script parser expects them).
+    std::string read_dialog_script() {
+        if (pos_ >= lines_.size()) return {};
+        std::string script = lines_[pos_];
+        ++pos_;
+        if (script != "\"\"\"") return script;
+        while (pos_ < lines_.size() && lines_[pos_] != "\"\"\"") {
+            script += '\n';
+            script += lines_[pos_];
+            ++pos_;
+        }
+        script += '\n';
+        if (pos_ < lines_.size()) {
+            script += lines_[pos_];
+            ++pos_;
+        }
+        return script;
     }
 
-    // First line of a .bitsy file is the title dialog (Bitsy 8.15).
-    // Skip if the file starts with a comment, flag, or named segment.
-    void parse_title_if_present(Game& game) {
-        while (pos_ < lines_.size() && trim(lines_[pos_]).empty()) ++pos_;
-        if (pos_ >= lines_.size()) return;
-
-        std::string_view line = trim(lines_[pos_]);
-        if (line.starts_with('#') || line.starts_with('!')) return;
-        auto [kw, rest] = split_once(line);
-        if (line != "\"\"\"" && is_segment_keyword(kw)) return;
-
-        std::string script;
-        if (line == "\"\"\"") {
-            script = lines_[pos_];
-            ++pos_;
-            while (pos_ < lines_.size() && trim(lines_[pos_]) != "\"\"\"") {
-                script += '\n';
-                script += lines_[pos_];
-                ++pos_;
-            }
-            if (pos_ < lines_.size()) {
-                script += '\n';
-                script += lines_[pos_];
-                ++pos_;
-            }
-        } else {
-            script = lines_[pos_];
-            ++pos_;
-        }
+    // Line 0 of a .bitsy file is always the title dialog, and Bitsy skips the
+    // line after it (normally blank).
+    void parse_title(Game& game) {
+        const std::string script = read_dialog_script();
+        ++pos_;
 
         game.title_dialog = script;
-        if (game.title.empty()) {
-            auto plain = script;
-            if (plain.size() >= 6 && plain.starts_with("\"\"\"") &&
-                plain.ends_with("\"\"\"")) {
-                plain = plain.substr(3, plain.size() - 6);
-                if (!plain.empty() && plain.front() == '\n') plain.erase(plain.begin());
-            }
-            auto nl = plain.find('\n');
-            game.title = (nl == std::string::npos) ? plain : plain.substr(0, nl);
+        auto plain = script;
+        if (plain.size() >= 6 && plain.starts_with("\"\"\"") && plain.ends_with("\"\"\"")) {
+            plain = plain.substr(3, plain.size() - 6);
+            if (!plain.empty() && plain.front() == '\n') plain.erase(plain.begin());
         }
+        auto nl = plain.find('\n');
+        game.title = (nl == std::string::npos) ? plain : plain.substr(0, nl);
 
         Dialogue dlg;
         dlg.id = std::string(Game::kTitleDialogId);
@@ -388,36 +373,6 @@ private:
         std::vector<std::string> body;
         while (pos_ < lines_.size() && !trim(lines_[pos_]).empty()) {
             body.push_back(lines_[pos_]);
-            ++pos_;
-        }
-        return body;
-    }
-
-    // Count `"""` tokens in a line (used to keep blank lines inside triple quotes).
-    static int count_triple_quotes(std::string_view s) {
-        int n = 0;
-        for (std::size_t i = 0; i + 2 < s.size();) {
-            if (s[i] == '"' && s[i + 1] == '"' && s[i + 2] == '"') {
-                ++n;
-                i += 3;
-            } else {
-                ++i;
-            }
-        }
-        return n;
-    }
-
-    // DLG / END bodies may contain triple-quoted blocks with blank lines
-    // (page breaks). Keep reading while a `"""` pair is still open; once
-    // closed, stop at the next blank line so NAME and the next segment work.
-    std::vector<std::string> read_dialog_body() {
-        std::vector<std::string> body;
-        bool in_triple = false;
-        while (pos_ < lines_.size()) {
-            const std::string& raw = lines_[pos_];
-            if (!in_triple && trim(raw).empty()) break;
-            if (count_triple_quotes(raw) % 2 != 0) in_triple = !in_triple;
-            body.push_back(raw);
             ++pos_;
         }
         return body;
@@ -814,24 +769,16 @@ private:
     // -----------------------------------------------------------------------
     void parse_dialogue(std::string id, Game& game) {
         ++pos_;
-        std::vector<std::string> body = read_dialog_body();
-
         Dialogue dlg;
         dlg.id = id;
-
-        std::string content;
-        for (std::size_t i = 0; i < body.size(); ++i) {
-            std::string_view line = trim(body[i]);
-            auto [kw, rest] = split_once(line);
-            if (kw == "NAME" && i + 1 == body.size()) {
+        dlg.content = read_dialog_script();
+        if (pos_ < lines_.size()) {
+            auto [kw, rest] = split_once(lines_[pos_]);
+            if (kw == "NAME") {
                 dlg.name = std::string(rest);
-                continue;
+                ++pos_;
             }
-            if (!content.empty()) content += '\n';
-            content += body[i];
         }
-        dlg.content = std::move(content);
-
         game.dialogues[dlg.id] = std::move(dlg);
     }
 
@@ -840,39 +787,30 @@ private:
     // -----------------------------------------------------------------------
     void parse_variable(std::string id, Game& game) {
         ++pos_;
-        std::vector<std::string> body = read_body();
-
         Variable var;
         var.name = id;
-        if (!body.empty()) var.value = trim(body[0]);
+        if (pos_ < lines_.size()) {
+            var.value = lines_[pos_];
+            ++pos_;
+        }
         game.variables[var.name] = std::move(var);
     }
 
     // -----------------------------------------------------------------------
-    // END  (ending definition)
+    // END  (pre-7.0 ending definition)
     // -----------------------------------------------------------------------
     void parse_ending(std::string id, Game& game) {
         ++pos_;
-        std::vector<std::string> body = read_dialog_body();
-
         Ending ending;
         ending.id = id;
-
-        // Collect text lines until a NAME sub-key.
-        std::string text;
-        for (std::size_t i = 0; i < body.size(); ++i) {
-            std::string_view line = trim(body[i]);
-            auto [kw, rest] = split_once(line);
+        ending.text = read_dialog_script();
+        if (pos_ < lines_.size()) {
+            auto [kw, rest] = split_once(lines_[pos_]);
             if (kw == "NAME") {
                 ending.name = std::string(rest);
-                // NAME is typically the last sub-key.
-                break;
+                ++pos_;
             }
-            if (i > 0) text += '\n';
-            text += body[i];
         }
-        ending.text = std::move(text);
-
         game.endings[ending.id] = std::move(ending);
     }
 

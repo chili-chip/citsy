@@ -119,7 +119,7 @@ NAME solid
 // Bitsy segments are blank-line delimited — join them so the parser
 // does not swallow SPR/TIL/DLG into the previous block.
 static std::string bitsy_game(std::initializer_list<std::string> segments) {
-    std::string s = "# BITSY VERSION 8.12\n\n! ROOM_FORMAT 1\n";
+    std::string s = "\n\n# BITSY VERSION 8.12\n\n! ROOM_FORMAT 1\n";
     for (const auto& seg : segments) {
         s += "\n";
         s += seg;
@@ -154,6 +154,12 @@ static void press_ok(citsy::Engine& engine, citsy::MockHost& host) {
     if (engine.dialog_active() && std::string(engine.dialog_line()) == before) {
         tap(engine, host, citsy::Button::Ok);
     }
+}
+
+// Every .bitsy file opens with its title; read past it.
+static void skip_title(citsy::Engine& engine, citsy::MockHost& host) {
+    engine.update(host);
+    for (int i = 0; i < 8 && engine.dialog_active(); ++i) press_ok(engine, host);
 }
 
 static std::size_t map_i(int x, int y) {
@@ -490,7 +496,7 @@ TEST_CASE("sim: walking into a sprite starts dialog and does not move", "[engine
         room0(empty_grid()),
         avatar_at(4, 4),
         std::string(kNpcArt) + "POS 0 5,4\nDLG DLG_NPC\n",
-        "DLG DLG_NPC\n\"Hello!\"\n\"Nice to meet you.\"\n",
+        "DLG DLG_NPC\nHello!{pg}Nice to meet you.\n",
     });
     citsy::Engine engine(src);
     citsy::MockHost host;
@@ -512,7 +518,7 @@ TEST_CASE("sim: cannot walk while dialog is open", "[engine][sim][dialog]") {
         room0(empty_grid()),
         avatar_at(4, 4),
         std::string(kNpcArt) + "POS 0 5,4\nDLG DLG_NPC\n",
-        "DLG DLG_NPC\n\"Hello!\"\n",
+        "DLG DLG_NPC\nHello!\n",
     });
     citsy::Engine engine(src);
     citsy::MockHost host;
@@ -530,7 +536,7 @@ TEST_CASE("sim: Ok advances then closes linear dialog", "[engine][sim][dialog]")
         room0(empty_grid()),
         avatar_at(4, 4),
         std::string(kNpcArt) + "POS 0 5,4\nDLG DLG_NPC\n",
-        "DLG DLG_NPC\n\"Hello!\"\n\"Nice to meet you.\"\n",
+        "DLG DLG_NPC\nHello!{pg}Nice to meet you.\n",
     });
     citsy::Engine engine(src);
     citsy::MockHost host;
@@ -553,7 +559,7 @@ TEST_CASE("sim: input ignored until buttons released after dialog", "[engine][si
         room0(empty_grid()),
         avatar_at(4, 4),
         std::string(kNpcArt) + "POS 0 5,4\nDLG DLG_NPC\n",
-        "DLG DLG_NPC\n\"Bye.\"\n",
+        "DLG DLG_NPC\nBye.\n",
     });
     citsy::Engine engine(src);
     citsy::MockHost host;
@@ -590,7 +596,7 @@ TEST_CASE("sim: walking onto an item starts dialog and removes it", "[engine][si
         room0(empty_grid(), "ITM 0 5,4\n"),
         avatar_at(4, 4),
         std::string(kKeyArt) + "DLG DLG_KEY\n",
-        "DLG DLG_KEY\n\"You found a key.\"\n",
+        "DLG DLG_KEY\nYou found a key.\n",
     });
     citsy::Engine engine(src);
     citsy::MockHost host;
@@ -603,29 +609,31 @@ TEST_CASE("sim: walking onto an item starts dialog and removes it", "[engine][si
     CHECK(engine.avatar_x() == 5);
     CHECK(engine.dialog_active());
     CHECK(engine.dialog_line() == "You found a key.");
-    CHECK(engine.item_count("0") == 1);
-
-    const auto* snap = host.last_snapshot();
-    REQUIRE(snap != nullptr);
-    CHECK(snap->map2[map_i(5, 4)] == static_cast<std::uint8_t>('A'));  // avatar only; item gone while dialog is open
+    // Bitsy takes the item when its dialog closes.
+    CHECK(engine.item_count("0") == 0);
 
     press_ok(engine, host);
     CHECK_FALSE(engine.dialog_active());
+    CHECK(engine.item_count("0") == 1);
+    tap(engine, host, citsy::Button::Left);
+    CHECK(host.last_snapshot()->map2[map_i(5, 4)] == 0);  // item gone
 }
 
-TEST_CASE("sim: item dialog sees the updated inventory", "[engine][sim][inventory][dialog]") {
+TEST_CASE("sim: item dialog runs before the item is taken", "[engine][sim][inventory][dialog]") {
     auto src = bitsy_game({
         std::string(kPal),
         room0(empty_grid(), "ITM 0 5,4\n"),
         avatar_at(4, 4),
         std::string(kKeyArt) + "DLG DLG_KEY\n",
         R"(DLG DLG_KEY
+"""
 {
   - {item "0"} > 0 ?
-    "Got it."
+    Got it.
   - else ?
-    "Empty hands."
+    Empty hands.
 }
+"""
 )",
     });
     citsy::Engine engine(src);
@@ -634,9 +642,10 @@ TEST_CASE("sim: item dialog sees the updated inventory", "[engine][sim][inventor
 
     tap(engine, host, citsy::Button::Right);
     CHECK(engine.dialog_active());
-    CHECK(engine.dialog_line() == "Got it.");
+    CHECK(engine.dialog_line() == "Empty hands.");
+    CHECK(engine.item_count("0") == 0);
+    press_ok(engine, host);
     CHECK(engine.item_count("0") == 1);
-    CHECK(host.last_snapshot()->map2[map_i(5, 4)] == static_cast<std::uint8_t>('A'));
 }
 
 TEST_CASE("sim: item without dialog is removed immediately", "[engine][sim]") {
@@ -664,6 +673,7 @@ TEST_CASE("sim: walking onto an exit warps to the destination room", "[engine][s
     citsy::Engine engine(text);
     citsy::MockHost host;
     engine.start(host);
+    skip_title(engine, host);
     REQUIRE(engine.current_room_id() == "0");
     REQUIRE(engine.avatar_x() == 4);
     REQUIRE(engine.avatar_y() == 8);
@@ -680,6 +690,7 @@ TEST_CASE("sim: room change swaps the palette", "[engine][sim]") {
     citsy::Engine engine(text);
     citsy::MockHost host;
     engine.start(host);
+    skip_title(engine, host);
     engine.update(host);
     const auto* before = host.last_snapshot();
     REQUIRE(before != nullptr);
@@ -704,7 +715,7 @@ TEST_CASE("sim: exit dialog plays before the warp", "[engine][sim][dialog]") {
         room0(empty_grid(), "EXT 5,4 1 3,3 DLG DLG_EXT\n"),
         "ROOM 1\n" + empty_grid() + "PAL 0\n",
         avatar_at(4, 4),
-        "DLG DLG_EXT\n\"Crossing over.\"\n",
+        "DLG DLG_EXT\nCrossing over.\n",
     });
     citsy::Engine engine(src);
     citsy::MockHost host;
@@ -731,6 +742,7 @@ TEST_CASE("sim: playable.bitsy fixture — talk, pick up, exit", "[engine][sim][
     citsy::Engine engine(text);
     citsy::MockHost host;
     engine.start(host);
+    skip_title(engine, host);
 
     CHECK(engine.current_room_id() == "0");
     CHECK(engine.avatar_x() == 2);
@@ -806,8 +818,7 @@ TEST_CASE("sim: dialog can give and take items", "[engine][sim][inventory]") {
         std::string(kNpcArt) + "POS 0 5,4\nDLG DLG_NPC\n",
         std::string(kKeyArt),
         R"(DLG DLG_NPC
-{item "0" 1}
-"Here, take this."
+{item "0" 1}Here, take this.
 )",
     });
     citsy::Engine engine(src);
@@ -828,12 +839,14 @@ TEST_CASE("sim: branching dialog depends on item count", "[engine][sim][dialog]"
         std::string(kNpcArt) + "POS 0 7,4\nDLG DLG_NPC\n",
         std::string(kKeyArt),
         R"(DLG DLG_NPC
+"""
 {
   - {item "0"} > 0 ?
-    "You have the key."
+    You have the key.
   - else ?
-    "The door is locked."
+    The door is locked.
 }
+"""
 )",
     });
     citsy::Engine engine(src);
@@ -858,8 +871,7 @@ TEST_CASE("sim: variable assignment persists across talks", "[engine][sim][dialo
         std::string(kNpcArt) + "POS 0 5,4\nDLG DLG_NPC\n",
         "VAR talks\n0\n",
         R"(DLG DLG_NPC
-{talks = talks + 1}
-"Talked {print talks} times."
+{talks = talks + 1}Talked {say talks} times.
 )",
     });
     citsy::Engine engine(src);
@@ -884,10 +896,12 @@ TEST_CASE("sim: sequence dialog changes on each visit", "[engine][sim][dialog]")
         avatar_at(4, 4),
         std::string(kNpcArt) + "POS 0 5,4\nDLG DLG_NPC\n",
         R"(DLG DLG_NPC
+"""
 {sequence
-  - "first"
-  - "second"
+  - first
+  - second
 }
+"""
 )",
     });
     citsy::Engine engine(src);
@@ -906,7 +920,7 @@ TEST_CASE("sim: sequence dialog changes on each visit", "[engine][sim][dialog]")
     CHECK(engine.dialog_line() == "second");
 }
 
-TEST_CASE("sim: ending tile shows text then stops the game", "[engine][sim][ending]") {
+TEST_CASE("sim: ending tile shows text, then a press restarts the game", "[engine][sim][ending]") {
     auto src = bitsy_game({
         std::string(kPal),
         room0(empty_grid(), "END 0 5,4\n"),
@@ -926,7 +940,15 @@ TEST_CASE("sim: ending tile shows text then stops the game", "[engine][sim][endi
 
     press_ok(engine, host);
     CHECK_FALSE(engine.dialog_active());
-    CHECK_FALSE(engine.is_running());
+    CHECK(engine.ending_active());
+    CHECK(engine.is_running());
+
+    // Bitsy restarts on the next press: back to the start position.
+    tap(engine, host, citsy::Button::Ok);
+    CHECK_FALSE(engine.ending_active());
+    CHECK(engine.is_running());
+    CHECK(engine.avatar_x() == 4);
+    CHECK(engine.avatar_y() == 4);
 }
 
 // Upstream Bitsy (engine/bitsy.js, startEndingDialog) only clears isEnding on a
@@ -960,15 +982,14 @@ TEST_CASE("sim: locked ending keeps the game running on the ending tile", "[engi
     CHECK(engine.is_running());
 }
 
-TEST_CASE("sim: {end} in dialog stops the game after the box closes", "[engine][sim][ending]") {
+TEST_CASE("sim: {end} in dialog ends the game, then a press restarts it", "[engine][sim][ending]") {
     auto src = bitsy_game({
         std::string(kPal),
         room0(empty_grid()),
         avatar_at(4, 4),
         std::string(kNpcArt) + "POS 0 5,4\nDLG DLG_NPC\n",
         R"(DLG DLG_NPC
-"Farewell."
-{end}
+Farewell.{end}
 )",
     });
     citsy::Engine engine(src);
@@ -976,12 +997,16 @@ TEST_CASE("sim: {end} in dialog stops the game after the box closes", "[engine][
     engine.start(host);
     tap(engine, host, citsy::Button::Right);
     CHECK(engine.dialog_line() == "Farewell.");
-    CHECK(engine.is_running());
+    CHECK(engine.ending_active());  // {end} takes effect at once in Bitsy
     press_ok(engine, host);
-    CHECK_FALSE(engine.is_running());
+    CHECK_FALSE(engine.dialog_active());
+    CHECK(engine.ending_active());
+    tap(engine, host, citsy::Button::Ok);
+    CHECK_FALSE(engine.ending_active());
+    CHECK(engine.is_running());
 }
 
-TEST_CASE("sim: {exit} in dialog warps after the box closes", "[engine][sim][dialog]") {
+TEST_CASE("sim: {exit} in dialog warps while the box is open", "[engine][sim][dialog]") {
     auto src = bitsy_game({
         std::string(kPal),
         room0(empty_grid()),
@@ -989,16 +1014,15 @@ TEST_CASE("sim: {exit} in dialog warps after the box closes", "[engine][sim][dia
         avatar_at(4, 4),
         std::string(kNpcArt) + "POS 0 5,4\nDLG DLG_NPC\n",
         R"(DLG DLG_NPC
-"Off you go."
-{exit "1" 3 3}
+Off you go.{exit "1" 3 3}
 )",
     });
     citsy::Engine engine(src);
     citsy::MockHost host;
     engine.start(host);
     tap(engine, host, citsy::Button::Right);
-    CHECK(engine.current_room_id() == "0");
     CHECK(engine.dialog_line() == "Off you go.");
+    CHECK(engine.current_room_id() == "1");
     press_ok(engine, host);
     CHECK(engine.current_room_id() == "1");
     CHECK(engine.avatar_x() == 3);
@@ -1010,6 +1034,7 @@ TEST_CASE("sim: fixture scripted.bitsy — key, gate, ending", "[engine][sim][fi
     citsy::Engine engine(text);
     citsy::MockHost host;
     engine.start(host);
+    skip_title(engine, host);
 
     CHECK(engine.variable_value("met") == "0");
     CHECK(engine.item_count("0") == 0);
@@ -1024,9 +1049,9 @@ TEST_CASE("sim: fixture scripted.bitsy — key, gate, ending", "[engine][sim][fi
     tap(engine, host, citsy::Button::Up);
     tap(engine, host, citsy::Button::Up);
     CHECK(engine.avatar_y() == 2);
-    CHECK(engine.item_count("0") == 1);
     CHECK(engine.dialog_line() == "Got a key.");
     press_ok(engine, host);
+    CHECK(engine.item_count("0") == 1);
 
     // Talk to the guard again.
     tap(engine, host, citsy::Button::Down);
@@ -1039,5 +1064,139 @@ TEST_CASE("sim: fixture scripted.bitsy — key, gate, ending", "[engine][sim][fi
     tap(engine, host, citsy::Button::Left);
     CHECK(engine.dialog_line() == "You found the way out.");
     press_ok(engine, host);
-    CHECK_FALSE(engine.is_running());
+    CHECK(engine.ending_active());
+}
+
+// ===========================================================================
+// Bitsy 8.15 game flow
+// ===========================================================================
+
+TEST_CASE("sim: an exit lock lasts one visit to the room", "[engine][sim][dialog]") {
+    // Bitsy gives every exit a fresh `locked` property when the room is entered.
+    auto src = bitsy_game({
+        std::string(kPal),
+        room0(empty_grid(), "EXT 5,4 1 3,3 DLG DLG_EXT\nEXT 3,4 1 2,4\n"),
+        "ROOM 1\n" + empty_grid() + "PAL 0\nEXT 1,4 0 4,4\n",
+        avatar_at(4, 4),
+        R"(DLG DLG_EXT
+"""
+{sequence
+  - {property locked true}Locked.
+  - Open.
+}
+"""
+)",
+    });
+    citsy::Engine engine(src);
+    citsy::MockHost host;
+    engine.start(host);
+
+    tap(engine, host, citsy::Button::Right);
+    CHECK(engine.dialog_line() == "Locked.");
+    press_ok(engine, host);
+    CHECK(engine.current_room_id() == "0");
+
+    // Same visit: still locked.
+    tap(engine, host, citsy::Button::Left);
+    tap(engine, host, citsy::Button::Right);
+    CHECK(engine.dialog_line() == "Open.");
+    press_ok(engine, host);
+    CHECK(engine.current_room_id() == "0");
+
+    // Leave through the west exit and come back: the lock is gone.
+    tap(engine, host, citsy::Button::Left);
+    tap(engine, host, citsy::Button::Left);
+    REQUIRE(engine.current_room_id() == "1");
+    tap(engine, host, citsy::Button::Left);
+    REQUIRE(engine.current_room_id() == "0");
+    tap(engine, host, citsy::Button::Right);
+    CHECK(engine.dialog_line() == "Open.");
+    press_ok(engine, host);
+    CHECK(engine.current_room_id() == "1");
+    CHECK(engine.avatar_x() == 3);
+}
+
+TEST_CASE("sim: only true locks; other values do not", "[engine][sim][dialog]") {
+    auto src = bitsy_game({
+        std::string(kPal),
+        room0(empty_grid(), "EXT 5,4 1 3,3 DLG DLG_EXT\n"),
+        "ROOM 1\n" + empty_grid() + "PAL 0\n",
+        avatar_at(4, 4),
+        "DLG DLG_EXT\n{property locked 1}Shut?\n",
+    });
+    citsy::Engine engine(src);
+    citsy::MockHost host;
+    engine.start(host);
+    tap(engine, host, citsy::Button::Right);
+    press_ok(engine, host);
+    CHECK(engine.current_room_id() == "1");
+}
+
+TEST_CASE("sim: releasing Menu restarts the game from the title", "[engine][sim]") {
+    auto src = std::string("Hello game") + bitsy_game({
+        std::string(kPal),
+        room0(empty_grid()),
+        avatar_at(4, 4),
+    });
+    citsy::Engine engine(src);
+    citsy::MockHost host;
+    engine.start(host);
+    engine.update(host);
+    REQUIRE(engine.dialog_line() == "Hello game");
+    press_ok(engine, host);
+    tap(engine, host, citsy::Button::Right);
+    REQUIRE(engine.avatar_x() == 5);
+
+    tap(engine, host, citsy::Button::Menu);
+    CHECK(engine.is_running());
+    CHECK(engine.avatar_x() == 4);
+    CHECK(engine.dialog_line() == "Hello game");
+}
+
+TEST_CASE("sim: a restart resets items, variables and sequences", "[engine][sim]") {
+    auto src = bitsy_game({
+        std::string(kPal),
+        room0(empty_grid(), "ITM 0 5,4\nEND 0 3,4\n"),
+        avatar_at(4, 4),
+        std::string(kKeyArt),
+        "VAR n\n0\n",
+        "DLG 0\n{n = n + 1}The end.\n",
+    });
+    citsy::Engine engine(src);
+    citsy::MockHost host;
+    engine.start(host);
+    tap(engine, host, citsy::Button::Right);
+    REQUIRE(engine.item_count("0") == 1);
+    tap(engine, host, citsy::Button::Left);
+    tap(engine, host, citsy::Button::Left);
+    REQUIRE(engine.dialog_line() == "The end.");
+    CHECK(engine.variable_value("n") == "1");
+    press_ok(engine, host);
+    tap(engine, host, citsy::Button::Ok);
+
+    CHECK_FALSE(engine.ending_active());
+    CHECK(engine.item_count("0") == 0);
+    CHECK(engine.variable_value("n") == "0");
+    CHECK(engine.avatar_x() == 4);
+    engine.update(host);
+    CHECK(host.last_snapshot()->map2[map_i(5, 4)] != 0);  // the item is back
+}
+
+TEST_CASE("sim: variables keep their Bitsy types", "[engine][sim]") {
+    auto src = bitsy_game({
+        std::string(kPal),
+        room0(empty_grid()),
+        avatar_at(4, 4),
+        "VAR a\n3.5\n",
+        "VAR b\ntrue\n",
+        "VAR c\nhello\n",
+    });
+    citsy::Engine engine(src);
+    citsy::MockHost host;
+    engine.start(host);
+    CHECK(engine.variable_names() == std::vector<std::string>{"a", "b", "c"});
+    CHECK(engine.variable_json("a") == "3.5");
+    CHECK(engine.variable_json("b") == "true");
+    CHECK(engine.variable_json("c") == "\"hello\"");
+    CHECK(engine.variable_json("missing") == "null");
 }

@@ -62,8 +62,10 @@ tests/
 │   ├── test_engine.cpp     # Engine lifecycle and MockHost integration
 │   ├── test_dialog.cpp     # Dialog page extraction and script interpreter
 │   ├── test_simulation.cpp # Movement, collision, render, exits, dialog
-│   ├── test_phase3.cpp     # Animation, fonts, RTL, sound, transitions, dialog VM
-│   └── test_textbox.cpp    # Textbox colours, effects, wrap, pagination
+│   ├── test_phase3.cpp     # Animation, fonts, RTL, sound, transitions
+│   ├── test_textbox.cpp    # Textbox colours, effects, wrap, pagination
+│   └── test_parity.cpp     # Plays tests/parity/cases, compares with Bitsy 8.15
+├── parity/                 # Bitsy 8.15 reference engine, cases and goldens
 └── data/
     ├── minimal.bitsy       # Full game with all entity types
     ├── animated.bitsy      # Multi-frame tile animation
@@ -78,10 +80,11 @@ tests/
 |---|---|---|
 | `test_parser.cpp` | `[parser]`, `[palette]`, `[tile]`, `[sprite]`, `[item]`, `[room]`, `[dialogue]`, `[variable]`, `[ending]`, `[model]`, `[errors]`, `[fixture]` | `.bitsy` parsing, entity fields, error handling, fixture files |
 | `test_engine.cpp` | `[engine]`, `[mock]` | Engine construction, lifecycle, buffer sizes, palette output, MockHost behavior |
-| `test_dialog.cpp` | `[dialog]`, `[script]` | Page extraction and script evaluation (variables, lists, items, `{end}`/`{exit}`) |
+| `test_dialog.cpp` | `[dialog]`, `[script]` | Bitsy 8.15 script semantics: text, values and operators, lists, branches, world functions (expected values come from the reference engine) |
 | `test_simulation.cpp` | `[engine]`, `[sim]`, `[render]`, `[dialog]`, `[fixture]` | Movement, walls, map/video compose, sprite/item drawing, exits, linear dialog |
 | `test_phase3.cpp` | `[phase3]`, `[font]`, `[sound]`, `[transition]`, `[inventory]`, `[dialog]` | Animation, fonts, RTL, blips/tunes, `{item}`/`{property}`, titles, 8.15 extras |
 | `test_textbox.cpp` | `[textbox]`, `[font]`, `[dialog]`, `[engine]`, `[rbw]`, `[fx]`, `[wrap]`, `[page]`, `[sentence]`, `[typewriter]` | Black/white textbox, `{clr}`/`{rbw}`, combinable effects, whole-word wrap, typewriter reveal, multi-screen overflow, sentences kept on one screen, `{cycle}` |
+| `test_parity.cpp` | `[parity]` | Plays every `tests/parity/cases/*.case` and compares the trace (text, room, inventory, variables, and with `trace output` both sound channels and transitions frame by frame) with the golden written by Bitsy 8.15 (see [tests/parity/README.md](https://github.com/chili-chip/citsy/blob/main/tests/parity/README.md)) |
 
 As of Phase 3, the suite covers parser, simulation, dialog scripting, fonts, sound, and transitions.
 

@@ -1,0 +1,14 @@
+# The guard, the key and the ending in tests/data/scripted.bitsy.
+game ../../data/scripted.bitsy
+read             # title
+press right      # the guard wants a key
+read
+press up up      # the key: its dialog runs before it is taken
+read
+press down down
+press right      # the guard again
+read
+press left       # the ending
+read
+press ok         # restarts
+read

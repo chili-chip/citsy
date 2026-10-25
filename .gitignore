@@ -7,3 +7,5 @@ site/
 .venv/
 .venv-docs/
 .pip-docs/
+# Downloaded by scripts/fetch_bitsy.cmake
+tests/parity/reference/

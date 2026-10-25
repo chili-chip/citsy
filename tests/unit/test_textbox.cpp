@@ -8,6 +8,9 @@
 #include "src/font/font.hpp"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -84,10 +87,10 @@ constexpr std::string_view kEmptyGrid =
     "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n"
     "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n";
 
-std::string game_src(std::string extra, std::string title = {}) {
+std::string game_src(std::string extra, std::string title = {}, std::string header = {}) {
     std::string s;
-    if (!title.empty()) s += title + "\n\n";
-    s += "# BITSY VERSION 8.15\n\n! ROOM_FORMAT 1\n\n";
+    s += title + "\n\n";  // line 0 is always the title
+    s += "# BITSY VERSION 8.15\n\n! ROOM_FORMAT 1\n\n" + header;
     s += std::string(kPal) + "\nROOM 0\n" + std::string(kEmptyGrid);
     s += "PAL 0\n" + extra + "\n" + std::string(kAvatar);
     return s;
@@ -169,6 +172,150 @@ TEST_CASE("textbox: continue arrow is white", "[font][textbox]") {
     CHECK(count_eq(pix, citsy::kTextboxWhite) >= 4);
 }
 
+/// Bitsy dialog.js `arrowdata`: a 5x3 down arrow.
+constexpr int kArrow[3][5] = {{1, 1, 1, 1, 1}, {0, 1, 1, 1, 0}, {0, 0, 1, 0, 0}};
+
+/// True when exactly Bitsy's arrow is lit with its top-left at (left, top).
+bool arrow_at(const std::vector<std::uint8_t>& pix, int w, int left, int top) {
+    for (int y = 0; y < 3; ++y) {
+        for (int x = 0; x < 5; ++x) {
+            const bool lit =
+                pix[static_cast<std::size_t>((top + y) * w + left + x)] == citsy::kTextboxWhite;
+            if (lit != (kArrow[y][x] == 1)) return false;
+        }
+    }
+    return true;
+}
+
+TEST_CASE("textbox: continue arrow is Bitsy's 5x3 arrow in the bottom right",
+          "[font][textbox][arrow]") {
+    auto f = citsy::default_font();
+    auto layout = box();
+    layout.show_arrow = true;
+    auto pix = citsy::render_textbox(f, {}, layout);
+    // Bitsy: top = height - 5, left = width - (5 + 4).
+    CHECK(arrow_at(pix, 104, 104 - 9, 32 - 5));
+    CHECK(count_eq(pix, citsy::kTextboxWhite) == 9);
+}
+
+TEST_CASE("textbox: right-to-left text puts the arrow on the left",
+          "[font][textbox][arrow][rtl]") {
+    auto f = citsy::default_font();
+    auto layout = box();
+    layout.show_arrow = true;
+    layout.rtl = true;
+    auto pix = citsy::render_textbox(f, {}, layout);
+    CHECK(arrow_at(pix, 104, 4, 32 - 5));
+    CHECK(count_eq(pix, citsy::kTextboxWhite) == 9);
+}
+
+// ---------------------------------------------------------------------------
+// Wavy and shaky offsets (Bitsy dialog.js WavyEffect / ShakyEffect)
+// ---------------------------------------------------------------------------
+
+struct InkOrigin {
+    int x = -1;
+    int y = -1;
+};
+
+/// Top-left corner of every non-black pixel.
+InkOrigin ink_origin(const std::vector<std::uint8_t>& pix, int w = 104, int h = 32) {
+    InkOrigin o{w, h};
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            if (pix[static_cast<std::size_t>(y * w + x)] == citsy::kTextboxBlack) continue;
+            o.x = std::min(o.x, x);
+            o.y = std::min(o.y, y);
+        }
+    }
+    return o;
+}
+
+/// How far @p fx moves @p text at @p time_ms, measured from the plain render.
+InkOrigin fx_shift(const std::string& text, std::uint8_t fx, double time_ms) {
+    auto f = citsy::default_font();
+    auto layout = box();
+    layout.time_ms = time_ms;
+    const auto plain = ink_origin(citsy::render_textbox(f, {span(text)}, layout));
+    const auto moved = ink_origin(citsy::render_textbox(f, {span(text, fx)}, layout));
+    return {moved.x - plain.x, moved.y - plain.y};
+}
+
+TEST_CASE("textbox: {wvy} moves a glyph by floor(sin(t/250 - col/2) * 2)",
+          "[font][textbox][fx][wvy]") {
+    // t = 400: sin(1.6) * 2 = 1.999 -> 1.
+    auto a = fx_shift("I", citsy::GlyphFx::Wavy, 400);
+    CHECK(a.x == 0);
+    CHECK(a.y == 1);
+    // t = 1000: sin(4) * 2 = -1.51 -> -2 (floor, not truncation).
+    auto b = fx_shift("I", citsy::GlyphFx::Wavy, 1000);
+    CHECK(b.x == 0);
+    CHECK(b.y == -2);
+}
+
+TEST_CASE("textbox: {wvy} phase follows the glyph's column",
+          "[font][textbox][fx][wvy]") {
+    auto f = citsy::default_font();
+    auto layout = box();
+    layout.time_ms = 0;
+    // Column 1 at t = 0: sin(-0.5) * 2 = -0.96 -> -1. Column 0 stays put.
+    auto plain = citsy::render_textbox(f, {span("I"), span("I")}, layout);
+    auto wavy = citsy::render_textbox(
+        f, {span("I"), span("I", citsy::GlyphFx::Wavy)}, layout);
+    CHECK(ink_origin(wavy).y == ink_origin(plain).y - 1);
+}
+
+TEST_CASE("textbox: {shk} uses Bitsy's shake formula", "[font][textbox][fx][shk]") {
+    // Expected values from dialog.js ShakyEffect, row 0, column 0.
+    auto a = fx_shift("I", citsy::GlyphFx::Shaky, 10);
+    CHECK(a.x == 0);
+    CHECK(a.y == -2);
+    auto b = fx_shift("I", citsy::GlyphFx::Shaky, 123);
+    CHECK(b.x == -2);
+    CHECK(b.y == -1);
+    auto c = fx_shift("I", citsy::GlyphFx::Shaky, 33);
+    CHECK(c.x == 1);
+    CHECK(c.y == -1);
+}
+
+TEST_CASE("textbox: {shk} phase follows the glyph's row", "[font][textbox][fx][shk]") {
+    // Row 1, column 0, t = 50: x -1, y -2 (row 0 would be x 0, y -1).
+    auto s = fx_shift("\nI", citsy::GlyphFx::Shaky, 50);
+    CHECK(s.x == -1);
+    CHECK(s.y == -2);
+}
+
+TEST_CASE("textbox: {wvy} and {shk} offsets add before rounding down",
+          "[font][textbox][fx]") {
+    // t = 400: shake y 0.813 + wave y 1.999 = 2.81 -> 2; shake x -0.010 -> -1.
+    const auto both = static_cast<std::uint8_t>(citsy::GlyphFx::Wavy | citsy::GlyphFx::Shaky);
+    auto s = fx_shift("I", both, 400);
+    CHECK(s.x == -1);
+    CHECK(s.y == 2);
+}
+
+TEST_CASE("textbox: rainbow uses Bitsy's ten colours, one step per 100 ms",
+          "[font][textbox][rbw]") {
+    CHECK(citsy::kTextboxRainbowCount == 10);
+    // floor(posMod(t / 100 - col * 0.5, 10))
+    CHECK(citsy::rainbow_index(0, 0) == citsy::kTextboxRainbow0);
+    CHECK(citsy::rainbow_index(0, 100) == citsy::kTextboxRainbow0 + 1);
+    CHECK(citsy::rainbow_index(0, 950) == citsy::kTextboxRainbow0 + 9);
+    CHECK(citsy::rainbow_index(0, 1000) == citsy::kTextboxRainbow0);
+    CHECK(citsy::rainbow_index(1, 0) == citsy::kTextboxRainbow0 + 9);
+    CHECK(citsy::rainbow_index(3, 0) == citsy::kTextboxRainbow0 + 8);
+
+    std::vector<citsy::Color> pal;
+    citsy::install_textbox_colors(pal);
+    const citsy::Color bitsy[10] = {
+        {255, 0, 0},   {255, 217, 0}, {78, 255, 0},  {0, 255, 125}, {0, 192, 255},
+        {0, 18, 255},  {136, 0, 255}, {255, 0, 242}, {255, 0, 138}, {255, 0, 61},
+    };
+    for (int i = 0; i < 10; ++i) {
+        CHECK(pal[static_cast<std::size_t>(citsy::kTextboxRainbow0 + i)] == bitsy[i]);
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Rainbow
 // ---------------------------------------------------------------------------
@@ -245,8 +392,8 @@ TEST_CASE("install_textbox_colors fills reserved slots", "[font][textbox]") {
     CHECK(pal[0].r == 10);
     CHECK(pal[citsy::kTextboxBlack] == citsy::Color{0, 0, 0});
     CHECK(pal[citsy::kTextboxWhite] == citsy::Color{255, 255, 255});
-    CHECK(pal[citsy::kTextboxRainbow0] == citsy::Color{128, 237, 18});
-    CHECK(pal[citsy::kTextboxRainbow0 + 8] == citsy::Color{128, 18, 237});
+    CHECK(pal[citsy::kTextboxRainbow0] == citsy::Color{255, 0, 0});
+    CHECK(pal[citsy::kTextboxRainbow0 + 9] == citsy::Color{255, 0, 61});
     CHECK(citsy::rainbow_index(0, 0) == citsy::kTextboxRainbow0);
 }
 
@@ -290,7 +437,7 @@ TEST_CASE("textbox: rainbow overrides {clr} when both are on", "[font][textbox][
 
 TEST_CASE("dialog vm: stacked effect tags combine", "[dialog][textbox][fx]") {
     citsy::DialogVM vm;
-    vm.start("\"{wvy}{rbw}Hi{/rbw}{/wvy}\"", {});
+    vm.start("{wvy}{rbw}Hi{/rbw}{/wvy}", {});
     REQUIRE_FALSE(vm.spans().empty());
     CHECK(vm.spans()[0].text == "Hi");
     CHECK(vm.spans()[0].effects ==
@@ -301,7 +448,7 @@ TEST_CASE("dialog vm: stacked effect tags combine", "[dialog][textbox][fx]") {
 TEST_CASE("dialog vm: later tag adds an effect without dropping the first",
           "[dialog][textbox][fx]") {
     citsy::DialogVM vm;
-    vm.start("\"{wvy}A{shk}B{/shk}C{/wvy}D\"", {});
+    vm.start("{wvy}A{shk}B{/shk}C{/wvy}D", {});
     REQUIRE(vm.spans().size() >= 4);
     CHECK(vm.spans()[0].text == "A");
     CHECK(vm.spans()[0].effects == citsy::GlyphFx::Wavy);
@@ -316,19 +463,41 @@ TEST_CASE("dialog vm: later tag adds an effect without dropping the first",
 TEST_CASE("dialog vm: default color is unset (white) until {clr}",
           "[dialog][textbox]") {
     citsy::DialogVM vm;
-    vm.start("\"plain{clr1}ink{/clr1}plain\"", {});
+    // {clr1} toggles; Bitsy has no {/clr1}. clr1..clr3 are palette colours 0..2.
+    vm.start("plain{clr1}ink{clr1}plain", {});
     REQUIRE(vm.spans().size() >= 3);
     CHECK(vm.spans()[0].color == -1);
-    CHECK(vm.spans()[1].color == 1);
+    CHECK(vm.spans()[1].color == 0);
     CHECK(vm.spans()[2].color == -1);
 }
 
-TEST_CASE("dialog vm: {rbw} and {clr2} can stack", "[dialog][textbox][fx]") {
+TEST_CASE("dialog vm: {clr2} switched on after {rbw} wins, as in Bitsy",
+          "[dialog][textbox][fx]") {
+    // Bitsy applies effects in the order they were switched on, and both set
+    // the glyph colour, so the later one wins.
     citsy::DialogVM vm;
-    vm.start("\"{rbw}{clr2}X\"", {});
+    vm.start("{rbw}{clr2}X", {});
+    REQUIRE_FALSE(vm.spans().empty());
+    CHECK(vm.spans()[0].effects == citsy::GlyphFx::None);
+    CHECK(vm.spans()[0].color == 1);
+}
+
+TEST_CASE("dialog vm: {rbw} switched on after {clr2} wins, as in Bitsy",
+          "[dialog][textbox][fx]") {
+    citsy::DialogVM vm;
+    vm.start("{clr2}{rbw}X", {});
     REQUIRE_FALSE(vm.spans().empty());
     CHECK(vm.spans()[0].effects == citsy::GlyphFx::Rainbow);
-    CHECK(vm.spans()[0].color == 2);
+}
+
+TEST_CASE("dialog vm: switching the later colour off brings back the earlier one",
+          "[dialog][textbox][fx]") {
+    citsy::DialogVM vm;
+    vm.start("{clr2}{rbw}A{rbw}B", {});
+    REQUIRE(vm.spans().size() >= 2);
+    CHECK(vm.spans()[0].effects == citsy::GlyphFx::Rainbow);
+    CHECK(vm.spans()[1].effects == citsy::GlyphFx::None);
+    CHECK(vm.spans()[1].color == 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -625,9 +794,9 @@ TEST_CASE("engine: short dialog dismisses after typing completes",
     CHECK_FALSE(engine.dialog_active());
 }
 
-TEST_CASE("engine: {p} still starts a new dialog page after screens",
+TEST_CASE("engine: {pg} still starts a new dialog page after screens",
           "[engine][textbox][page]") {
-    citsy::Engine engine(game_src("", "\"one{p}two\""));
+    citsy::Engine engine(game_src("", "one{pg}two"));
     citsy::MockHost host;
     engine.start(host);
     engine.update(host);
@@ -652,26 +821,26 @@ TEST_CASE("engine: open dialog installs black white and rainbow palette slots",
     REQUIRE(snap->palette.size() >= 256);
     CHECK(snap->palette[citsy::kTextboxBlack] == citsy::Color{0, 0, 0});
     CHECK(snap->palette[citsy::kTextboxWhite] == citsy::Color{255, 255, 255});
-    CHECK(snap->palette[citsy::kTextboxRainbow0] == citsy::Color{128, 237, 18});
+    CHECK(snap->palette[citsy::kTextboxRainbow0] == citsy::Color{255, 0, 0});
     CHECK(count_eq(snap->textbox_pixels, citsy::kTextboxBlack) > 100);
     CHECK(count_eq(snap->textbox_pixels, citsy::kTextboxWhite) > 10);
 }
 
 TEST_CASE("engine: rainbow dialog paints reserved indices",
           "[engine][textbox][rbw]") {
-    citsy::Engine engine(game_src("", "\"{rbw}RAINBOW TEXT\""));
+    citsy::Engine engine(game_src("", "{rbw}RAINBOW TEXT"));
     citsy::MockHost host;
     engine.start(host);
     finish_typing(engine, host);
     auto* snap = host.last_snapshot();
     REQUIRE(snap != nullptr);
     CHECK(rainbow_ink(snap->textbox_pixels) > 20);
-    CHECK(count_eq(snap->textbox_pixels, citsy::kTextboxWhite) <= 4);
+    CHECK(count_eq(snap->textbox_pixels, citsy::kTextboxWhite) <= 9);  // only the continue arrow
 }
 
 TEST_CASE("engine: rainbow animation changes pixels over time",
           "[engine][textbox][rbw]") {
-    citsy::Engine engine(game_src("", "\"{rbw}RAINBOW\""));
+    citsy::Engine engine(game_src("", "{rbw}RAINBOW"));
     citsy::MockHost host;
     host.dt_ms = 50;
     engine.start(host);
@@ -686,12 +855,7 @@ TEST_CASE("engine: rainbow animation changes pixels over time",
 }
 
 bool continue_arrow_lit(const std::vector<std::uint8_t>& pix, int w, int h) {
-    const int ax = w - 5;
-    const int ay = h - 4;
-    auto at = [&](int x, int y) {
-        return pix[static_cast<std::size_t>(y * w + x)] == citsy::kTextboxWhite;
-    };
-    return at(ax, ay) && at(ax - 1, ay - 1) && at(ax + 1, ay - 1) && at(ax, ay - 1);
+    return arrow_at(pix, w, w - 9, h - 5);
 }
 
 TEST_CASE("engine: typewriter reveals letters over time",
@@ -716,7 +880,7 @@ TEST_CASE("engine: typewriter reveals letters over time",
 
 TEST_CASE("engine: Ok skips remaining typing then a second Ok advances",
           "[engine][textbox][typewriter]") {
-    citsy::Engine engine(game_src("", "\"HELLO{p}BYE\""));
+    citsy::Engine engine(game_src("", "HELLO{pg}BYE"));
     citsy::MockHost host;
     engine.start(host);
     engine.update(host);
@@ -987,4 +1151,156 @@ TEST_CASE("paginate: a sentence with a line break inside moves as a whole",
     REQUIRE(pages.size() == 2);
     CHECK(citsy::spans_to_plain(pages[0]) == "AA BB.");
     CHECK(citsy::spans_to_plain(pages[1]) == "CC\nDD\nEE FF.");
+}
+
+// ---------------------------------------------------------------------------
+// Built-in fonts (Bitsy 8.15's ascii_small, unicode_european_small,
+// unicode_european_large and arabic)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+std::string read_reference_font(const std::string& name) {
+    const auto path = std::filesystem::path(__FILE__).parent_path().parent_path() /
+                      "parity" / "reference" / "bitsy-8.15" / (name + ".bitsyfont");
+    std::ifstream f(path, std::ios::binary);
+    REQUIRE(f.is_open());
+    std::ostringstream buf;
+    buf << f.rdbuf();
+    return buf.str();
+}
+
+void check_same_font(const citsy::BitsyFont& a, const citsy::BitsyFont& b) {
+    CHECK(a.name == b.name);
+    CHECK(a.width == b.width);
+    CHECK(a.height == b.height);
+    REQUIRE(a.glyphs.size() == b.glyphs.size());
+    int mismatched = 0;
+    for (const auto& [cp, g] : b.glyphs) {
+        const auto it = a.glyphs.find(cp);
+        if (it == a.glyphs.end() || it->second.width != g.width ||
+            it->second.height != g.height || it->second.offset_x != g.offset_x ||
+            it->second.offset_y != g.offset_y || it->second.spacing != g.spacing ||
+            it->second.data != g.data) {
+            ++mismatched;
+        }
+    }
+    CHECK(mismatched == 0);
+    CHECK(a.missing.data == b.missing.data);
+}
+
+std::string utf8(std::u32string_view cps) {
+    std::string out;
+    for (const char32_t c : cps) {
+        if (c < 0x80) {
+            out += static_cast<char>(c);
+        } else if (c < 0x800) {
+            out += static_cast<char>(0xC0 | (c >> 6));
+            out += static_cast<char>(0x80 | (c & 0x3F));
+        } else {
+            out += static_cast<char>(0xE0 | (c >> 12));
+            out += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+            out += static_cast<char>(0x80 | (c & 0x3F));
+        }
+    }
+    return out;
+}
+
+} // namespace
+
+TEST_CASE("fonts: each built-in font matches Bitsy's .bitsyfont file", "[font][builtin]") {
+    const auto name = GENERATE(as<std::string>{}, "ascii_small", "unicode_european_small",
+                               "unicode_european_large", "arabic");
+    INFO(name);
+    const auto builtin = citsy::builtin_font(name);
+    REQUIRE(builtin.has_value());
+    check_same_font(*builtin, citsy::parse_bitsyfont(read_reference_font(name)));
+}
+
+TEST_CASE("fonts: unknown and Asian fonts are not built in", "[font][builtin]") {
+    CHECK_FALSE(citsy::builtin_font("unicode_asian").has_value());
+    CHECK_FALSE(citsy::builtin_font("no_such_font").has_value());
+}
+
+TEST_CASE("engine: DEFAULT_FONT picks a built-in font without a FONT segment",
+          "[engine][font][builtin]") {
+    const std::string l_stroke = utf8(U"\u0142");
+    const auto european = citsy::builtin_font("unicode_european_small");
+    REQUIRE(european.has_value());
+    REQUIRE(european->has(0x142));
+    REQUIRE_FALSE(citsy::default_font().has(0x142));
+    const auto& glyph = european->glyph(0x142);
+    const int glyph_ink = static_cast<int>(std::count(glyph.data.begin(), glyph.data.end(), 1));
+
+    auto white_after_typing = [](const std::string& src) {
+        citsy::Engine engine(src);
+        citsy::MockHost host;
+        engine.start(host);
+        finish_typing(engine, host);
+        const auto* snap = host.last_snapshot();
+        REQUIRE(snap != nullptr);
+        REQUIRE(snap->textbox_visible);
+        return count_eq(snap->textbox_pixels, citsy::kTextboxWhite);
+    };
+    const int with_font =
+        white_after_typing(game_src("", l_stroke, "DEFAULT_FONT unicode_european_small\n\n"));
+    // The glyph plus the 9 pixels of the next-page arrow.
+    CHECK(with_font == glyph_ink + 9);
+    // ascii_small has no ł, so it draws the missing-glyph box instead.
+    CHECK(white_after_typing(game_src("", l_stroke)) == 5 * 7 + 9);
+}
+
+// ---------------------------------------------------------------------------
+// Arabic letter joining (Bitsy dialog.js ArabicHandler)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("arabic: a lone letter keeps its isolated form", "[font][arabic]") {
+    CHECK(citsy::shape_arabic(utf8(U"\u0628")) == utf8(U"\u0628"));
+}
+
+TEST_CASE("arabic: joined letters take initial, middle and final forms", "[font][arabic]") {
+    // beh beh beh -> initial, middle, final
+    CHECK(citsy::shape_arabic(utf8(U"\u0628\u0628\u0628")) == utf8(U"\uFE91\uFE92\uFE90"));
+    CHECK(citsy::shape_arabic(utf8(U"\u0628\u0628")) == utf8(U"\uFE91\uFE90"));
+}
+
+TEST_CASE("arabic: a letter that never joins forward breaks the word", "[font][arabic]") {
+    // alef does not join the next letter, so alef beh are both isolated.
+    CHECK(citsy::shape_arabic(utf8(U"\u0627\u0628")) == utf8(U"\u0627\u0628"));
+    // beh alef: beh joins forward (initial), alef is final.
+    CHECK(citsy::shape_arabic(utf8(U"\u0628\u0627")) == utf8(U"\uFE91\uFE8E"));
+}
+
+TEST_CASE("arabic: lam alef becomes one ligature", "[font][arabic]") {
+    CHECK(citsy::shape_arabic(utf8(U"\u0644\u0627")) == utf8(U"\uFEFB"));
+    // beh lam alef: the ligature takes the final form.
+    CHECK(citsy::shape_arabic(utf8(U"\u0628\u0644\u0627")) == utf8(U"\uFE91\uFEFC"));
+    CHECK(citsy::shape_arabic(utf8(U"\u0644\u0623")) == utf8(U"\uFEF7"));
+}
+
+TEST_CASE("arabic: spaces and other letters are left alone", "[font][arabic]") {
+    CHECK(citsy::shape_arabic("hello world") == "hello world");
+    CHECK(citsy::shape_arabic(utf8(U"\u0628 \u0628")) == utf8(U"\u0628 \u0628"));
+    CHECK(citsy::shape_arabic(utf8(U"a\u0628\u0628!")) == utf8(U"a\uFE91\uFE90!"));
+}
+
+TEST_CASE("engine: Arabic dialog is drawn with joined letter forms",
+          "[engine][font][arabic]") {
+    // Shaped beh beh uses glyphs FE91 and FE90 from the arabic font.
+    const auto arabic = citsy::builtin_font("arabic");
+    REQUIRE(arabic.has_value());
+    auto ink = [&](char32_t cp) {
+        const auto& d = arabic->glyph(cp).data;
+        return static_cast<int>(std::count(d.begin(), d.end(), 1));
+    };
+    REQUIRE(ink(0xFE91) + ink(0xFE90) != 2 * ink(0x0628));
+
+    citsy::Engine engine(game_src("", utf8(U"\u0628\u0628"), "DEFAULT_FONT arabic\n\n"));
+    citsy::MockHost host;
+    engine.start(host);
+    finish_typing(engine, host);
+    const auto* snap = host.last_snapshot();
+    REQUIRE(snap != nullptr);
+    CHECK(count_eq(snap->textbox_pixels, citsy::kTextboxWhite) ==
+          ink(0xFE91) + ink(0xFE90) + 9);
 }

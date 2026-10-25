@@ -1,0 +1,72 @@
+> start
+room 0 at 4,4
+mode narrating
+dialog open
+> read
+text "scripted"
+room 0 at 4,4
+mode playing
+dialog -
+inventory -
+var met = 0
+> press right
+room 0 at 4,4
+mode playing
+dialog open
+> read
+text "I need a key."
+room 0 at 4,4
+mode playing
+dialog -
+inventory -
+var met = 1
+> press up up
+room 0 at 4,2
+mode playing
+dialog open
+> read
+text "Got a key."
+room 0 at 4,2
+mode playing
+dialog -
+inventory 0=1
+var met = 1
+> press down down
+room 0 at 4,4
+mode playing
+dialog -
+inventory 0=1
+var met = 1
+> press right
+room 0 at 4,4
+mode playing
+dialog open
+> read
+text "Go on through."
+room 0 at 4,4
+mode playing
+dialog -
+inventory 0=1
+var met = 1
+> press left
+room 0 at 3,4
+mode ending
+dialog open
+> read
+text "You found the way out."
+room 0 at 3,4
+mode ending
+dialog -
+inventory 0=1
+var met = 1
+> press ok
+room 0 at 4,4
+mode narrating
+dialog open
+> read
+text "scripted"
+room 0 at 4,4
+mode playing
+dialog -
+inventory -
+var met = 0

@@ -22,12 +22,10 @@ inline constexpr bool kOccludeTilesUnderEntities = true;
 /// present() — the engine installs true black / white / rainbow hues there
 /// while a dialog is open (they are independent of the room palette).
 inline constexpr std::uint8_t kTextboxRainbow0     = 224;
-inline constexpr int          kTextboxRainbowCount = 16;
+/// Bitsy's ten fixed rainbow colours (bitsy.js `rainbowColors`).
+inline constexpr int          kTextboxRainbowCount = 10;
 /// Bitsy `RainbowEffect`: `(time / 100) - char.col * 0.5`.
-inline constexpr double       kTextboxRainbowTimeMs    = 70.0;
-inline constexpr double       kTextboxRainbowColShift  = 0.5;
-/// `{wvy}` sine phase rate: `sin(time_ms * speed + index * phase)`.
-inline constexpr double       kTextboxWavySpeed        = 0.005;
+inline constexpr double       kTextboxRainbowTimeMs    = 100.0;
 /// Bitsy `DialogBuffer.nextCharMaxTime`: milliseconds per printable glyph.
 inline constexpr double       kTextboxTypewriterMsPerChar = 50.0;
 inline constexpr std::uint8_t kTextboxWhite       = 253;

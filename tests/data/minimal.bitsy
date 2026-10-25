@@ -1,6 +1,6 @@
-# BITSY VERSION 8.12
+minimal test game
 
-NAME minimal test game
+# BITSY VERSION 8.12
 
 ! ROOM_FORMAT 1
 
@@ -69,7 +69,7 @@ NAME key
 DLG DLG_0
 
 DLG DLG_0
-"Hello, world!"
+Hello, world!
 
 VAR score
 0
