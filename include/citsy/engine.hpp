@@ -3,6 +3,7 @@
 #include <citsy/host.hpp>
 #include <citsy/types.hpp>
 
+#include <cstdint>
 #include <memory>
 #include <stdexcept>
 #include <string>
@@ -24,13 +25,18 @@ public:
         : std::runtime_error(line >= 0
               ? "line " + std::to_string(line) + ": " + msg
               : msg)
+        , message_(msg)
         , line_(line)
     {}
+
+    /// The error without its "line N: " prefix.
+    [[nodiscard]] const std::string& message() const noexcept { return message_; }
 
     /// 1-based line number where the error was detected, or -1 if unknown.
     [[nodiscard]] int line() const noexcept { return line_; }
 
 private:
+    std::string message_;
     int line_;
 };
 
@@ -66,6 +72,11 @@ public:
     /// @throws ParseError           if the data is malformed.
     /// @throws std::ios_base::failure if the file cannot be read.
     [[nodiscard]] static Engine from_file(const std::string& path);
+
+    /// Parse @p bitsy_text without starting a game and return its errors
+    /// (empty when it loads). The parser stops at the first error, so there
+    /// is at most one today.
+    [[nodiscard]] static std::vector<ParseError> validate(std::string_view bitsy_text);
 
     ~Engine();
     Engine(Engine&&) noexcept;
@@ -143,6 +154,25 @@ public:
 
     /// A variable's value as JSON (`1`, `true`, `"text"`, `null` when unset).
     [[nodiscard]] std::string variable_json(std::string_view name) const;
+
+    // -----------------------------------------------------------------------
+    // Live state (for tools such as the creator's Play panel)
+    // -----------------------------------------------------------------------
+
+    /// Every script variable with its value as JSON, sorted by name.
+    [[nodiscard]] std::vector<std::pair<std::string, std::string>> variables() const;
+
+    /// Set a variable, reading @p text the way Bitsy reads a `VAR` value:
+    /// `true`/`false`, then a number, otherwise a string. Creates it if new.
+    void set_variable(std::string_view name, std::string_view text);
+
+    /// Set how many of an item (id or NAME) the avatar holds.
+    /// @return false, changing nothing, when there is no such item.
+    bool set_inventory_count(std::string_view id_or_name, double count);
+
+    /// Goes up whenever a variable or the inventory changes: scripts, pickups,
+    /// the setters above and restarts. Equal values mean nothing changed.
+    [[nodiscard]] std::uint64_t state_version() const noexcept;
 
     /// Current flipbook animation frame index (advances every 400 ms).
     [[nodiscard]] int anim_frame() const noexcept;

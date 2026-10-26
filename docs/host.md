@@ -166,6 +166,7 @@ The system API is still marked experimental upstream and can change before 1.0. 
 |---|---|---|
 | **MockHost** | Implemented | Unit tests; records `PresentSnapshot` per frame |
 | **32blit** | Implemented | Companion [citsy-32blit](https://github.com/chili-chip/citsy-32blit) player |
+| **Web** | Implemented | `backends/web/web_player.cpp`, built to `citsy.js` + `citsy.wasm` for the Chili creator |
 
 MockHost is header-only (`backends/mock/mock_host.hpp`). It stores every `present()` call so tests can assert on buffer sizes, palette colors, and graphics mode without a display. See [Testing](testing.md#mockhost).
 
@@ -177,3 +178,18 @@ MockHost is header-only (`backends/mock/mock_host.hpp`). It stores every `presen
 !!! warning "Keep platform code out of core"
 
     The `citsy` library must not link 32blit, SDL, OpenGL, or any audio/window library. Display hosts are separate projects.
+
+## Live state
+
+Tools such as the creator's Play panel watch and change a running game:
+
+| Engine | Browser player (C API) |
+|---|---|
+| `variables()`: name and JSON value, sorted | `citsy_state_json()`: `{"version":N,"inventory":{id:count},"variables":{name:value}}` |
+| `inventory()`: held items (count above 0), sorted by id | (in the same JSON) |
+| `set_variable(name, text)`: text is read like a `VAR` value | `citsy_set_variable(name, text)` |
+| `set_inventory_count(id_or_name, count)`: false for an unknown item | `citsy_set_item(id_or_name, count)`: 0 for an unknown item |
+| `state_version()`: goes up when a variable or the inventory changes | `citsy_state_version()` |
+| `Engine::validate(text)`: `ParseError`s with `line()` and `message()` | `citsy_validate(text)`: `{"ok":true}` or `{"ok":false,"errors":[{"line":N,"message":"..."}]}` |
+
+`citsy_state_json()` only rebuilds its string when `state_version()` moves, so calling it every frame is cheap. Build the browser player with `scripts/build-web.sh` (Emscripten); CI builds it in the `web` job, runs `node --test tests/web/*.test.mjs` on it and keeps `citsy.js` and `citsy.wasm` as the `citsy-web` artifact.

@@ -86,6 +86,7 @@ if(CITSY_BUILD_TESTS)
         tests/unit/test_phase3.cpp
         tests/unit/test_textbox.cpp
         tests/unit/test_parity.cpp
+        tests/unit/test_state.cpp
     )
 
     target_link_libraries(citsy_tests
@@ -94,12 +95,20 @@ if(CITSY_BUILD_TESTS)
             Catch2::Catch2WithMain
     )
 
+    # The browser player's C API, built natively against a stub emscripten.h.
+    target_sources(citsy_tests PRIVATE
+        tests/unit/test_web_api.cpp
+        backends/web/web_player.cpp
+    )
+
     target_include_directories(citsy_tests
         PRIVATE
             # Allow includes like: #include "src/parser/parser.hpp"
             ${CMAKE_CURRENT_SOURCE_DIR}
             # Allow includes like: #include "backends/mock/mock_host.hpp"
             ${CMAKE_CURRENT_SOURCE_DIR}
+            # Stand-in emscripten.h for backends/web/web_player.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/tests/stubs
     )
 
     include(Catch)
@@ -141,7 +150,7 @@ if(CITSY_BUILD_WEB)
         "SHELL:-sEXPORT_NAME=CitsyModule"
         "SHELL:-sENVIRONMENT=web,node"
         "SHELL:-sALLOW_MEMORY_GROWTH=1"
-        "SHELL:-sEXPORTED_RUNTIME_METHODS=['ccall','UTF8ToString','HEAPU8','HEAPF32']"
-        "SHELL:-sEXPORTED_FUNCTIONS=['_citsy_load','_citsy_unload','_citsy_set_button','_citsy_frame','_citsy_pixels','_citsy_sound','_citsy_last_error']"
+        "SHELL:-sEXPORTED_RUNTIME_METHODS=['ccall','cwrap','UTF8ToString','HEAPU8','HEAPF32']"
+        "SHELL:-sEXPORTED_FUNCTIONS=['_citsy_load','_citsy_unload','_citsy_set_button','_citsy_frame','_citsy_pixels','_citsy_sound','_citsy_last_error','_citsy_state_json','_citsy_state_version','_citsy_set_variable','_citsy_set_item','_citsy_validate']"
     )
 endif()

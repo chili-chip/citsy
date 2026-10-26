@@ -9,10 +9,13 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <cstdint>
 #include <cstring>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace {
 
@@ -116,6 +119,79 @@ WebHost g_host;
 std::unique_ptr<citsy::Engine> g_engine;
 std::string g_error;
 
+// citsy_state_json() is called every frame, so its string is rebuilt only
+// when the engine's state_version() moves.
+std::string g_state_json;
+std::uint64_t g_state_version = 0;
+bool g_state_valid = false;
+std::string g_validate_json;
+
+void append_json_string(std::string& out, std::string_view s) {
+    out += '"';
+    for (const char c : s) {
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    static constexpr char kHex[] = "0123456789abcdef";
+                    out += "\\u00";
+                    out += kHex[(c >> 4) & 0xf];
+                    out += kHex[c & 0xf];
+                } else {
+                    out += c;
+                }
+        }
+    }
+    out += '"';
+}
+
+void append_json_number(std::string& out, double n) {
+    char buf[32];
+    const auto res = std::to_chars(buf, buf + sizeof buf, n);
+    out.append(buf, res.ptr);
+}
+
+const std::string& state_json() {
+    if (!g_engine) {
+        g_state_valid = false;
+        g_state_json = R"({"version":0,"inventory":{},"variables":{}})";
+        return g_state_json;
+    }
+    const auto version = g_engine->state_version();
+    if (g_state_valid && version == g_state_version) return g_state_json;
+
+    std::string out = "{\"version\":";
+    out += std::to_string(version);
+    out += ",\"inventory\":{";
+    bool first = true;
+    for (const auto& [id, count] : g_engine->inventory()) {
+        if (!first) out += ',';
+        first = false;
+        append_json_string(out, id);
+        out += ':';
+        append_json_number(out, count);
+    }
+    out += "},\"variables\":{";
+    first = true;
+    for (const auto& [name, value] : g_engine->variables()) {
+        if (!first) out += ',';
+        first = false;
+        append_json_string(out, name);
+        out += ':';
+        out += value;
+    }
+    out += "}}";
+
+    g_state_json = std::move(out);
+    g_state_version = version;
+    g_state_valid = true;
+    return g_state_json;
+}
+
 } // namespace
 
 extern "C" {
@@ -123,6 +199,7 @@ extern "C" {
 EMSCRIPTEN_KEEPALIVE
 int citsy_load(const char* text) {
     g_engine.reset();
+    g_state_valid = false;
     g_error.clear();
     g_host = WebHost{};
     if (!text) {
@@ -144,6 +221,7 @@ int citsy_load(const char* text) {
 EMSCRIPTEN_KEEPALIVE
 void citsy_unload() {
     g_engine.reset();
+    g_state_valid = false;
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -174,6 +252,56 @@ const float* citsy_sound() {
 EMSCRIPTEN_KEEPALIVE
 const char* citsy_last_error() {
     return g_error.c_str();
+}
+
+// {"version":N,"inventory":{id:count},"variables":{name:value}}, where
+// inventory lists held items (count above 0) and values are JSON. The
+// pointer stays valid until the next call.
+EMSCRIPTEN_KEEPALIVE
+const char* citsy_state_json() {
+    return state_json().c_str();
+}
+
+// Goes up whenever a variable or the inventory changes; restarts at 0 on load.
+EMSCRIPTEN_KEEPALIVE
+double citsy_state_version() {
+    return g_engine ? static_cast<double>(g_engine->state_version()) : 0;
+}
+
+// Set a variable from text, read like a VAR value (true/false, number, text).
+EMSCRIPTEN_KEEPALIVE
+void citsy_set_variable(const char* name, const char* text) {
+    if (!g_engine || !name) return;
+    g_engine->set_variable(name, text ? text : "");
+}
+
+// Set an item's count by id or NAME. Returns 0 if there is no such item.
+EMSCRIPTEN_KEEPALIVE
+int citsy_set_item(const char* id, double count) {
+    if (!g_engine || !id) return 0;
+    return g_engine->set_inventory_count(id, count) ? 1 : 0;
+}
+
+// Parse a game without loading it: {"ok":true} or
+// {"ok":false,"errors":[{"line":N,"message":"..."}]} (line is -1 if unknown).
+EMSCRIPTEN_KEEPALIVE
+const char* citsy_validate(const char* text) {
+    const auto errors = citsy::Engine::validate(text ? text : "");
+    std::string out = errors.empty() ? "{\"ok\":true" : "{\"ok\":false,\"errors\":[";
+    bool first = true;
+    for (const auto& e : errors) {
+        if (!first) out += ',';
+        first = false;
+        out += "{\"line\":";
+        out += std::to_string(e.line());
+        out += ",\"message\":";
+        append_json_string(out, e.message());
+        out += '}';
+    }
+    if (!errors.empty()) out += ']';
+    out += '}';
+    g_validate_json = std::move(out);
+    return g_validate_json.c_str();
 }
 
 } // extern "C"

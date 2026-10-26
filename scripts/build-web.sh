@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build the citsy browser player and copy it into the Chili creator.
+# Build the citsy browser player and copy it into the Chili creator
+# (../chili-creator/citsy, or CITSY_WEB_OUT).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 EMSDK="${EMSDK:-$ROOT/.cache/emsdk}"
@@ -16,7 +17,7 @@ cmake -B "$ROOT/build-web" -S "$ROOT" \
   -DCITSY_BUILD_EXAMPLES=OFF \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build "$ROOT/build-web" --target citsy_web -j
-OUT="$ROOT/../chili-platform-frontend/public/creator/citsy"
+OUT="${CITSY_WEB_OUT:-$ROOT/../chili-creator/citsy}"
 mkdir -p "$OUT"
 js="$(find "$ROOT/build-web" -name 'citsy.js' -print -quit)"
 wasm="$(find "$ROOT/build-web" -name 'citsy.wasm' -print -quit)"
