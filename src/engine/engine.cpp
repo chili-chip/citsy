@@ -79,6 +79,25 @@ struct Engine::Impl {
     std::unordered_map<std::string, std::vector<RoomItem>> room_items;
     std::unordered_map<std::string, double> inventory;
     std::unordered_map<std::string, DialogValue> variables;
+    std::uint64_t state_version = 0;  ///< bumped when a variable or the inventory changes
+
+    void set_variable(std::string_view name, const DialogValue& v) {
+        auto [it, added] = variables.try_emplace(std::string(name), v);
+        if (!added) {
+            if (it->second.kind == v.kind && it->second.strict_equals(v)) return;
+            it->second = v;
+        }
+        ++state_version;
+    }
+
+    void set_item_count(const std::string& id, double count) {
+        auto [it, added] = inventory.try_emplace(id, count);
+        if (!added) {
+            if (it->second == count) return;
+            it->second = count;
+        }
+        ++state_version;
+    }
 
     // The `locked` property of each exit and ending in the current room. Bitsy
     // creates these when a room is entered, so locks only last for one visit.
@@ -247,14 +266,14 @@ struct Engine::Impl {
             return it->second;
         };
         w.set_var = [this](std::string_view name, const DialogValue& v) {
-            variables[std::string(name)] = v;
+            set_variable(name, v);
         };
         w.item_count = [this](std::string_view id) {
             auto it = inventory.find(std::string(id));
             return it == inventory.end() ? 0.0 : it->second;
         };
         w.set_item = [this](std::string_view id, double count) {
-            inventory[std::string(id)] = count;
+            set_item_count(std::string(id), count);
         };
         w.has_property = [this](std::string_view name) {
             return dialog_context && name == "locked";
@@ -348,6 +367,7 @@ struct Engine::Impl {
         textbox_was_active_ = false;
         textbox_pages_dirty_ = true;
 
+        ++state_version;
         inventory.clear();
         if (const Sprite* av = game.avatar()) {
             for (const auto& [id, n] : av->inventory) inventory[id] = n;
@@ -762,7 +782,8 @@ struct Engine::Impl {
                 list.erase(list.begin() + index);
                 ++items_generation_;
             }
-            inventory[item_id] += 1;
+            auto it = inventory.find(item_id);
+            set_item_count(item_id, (it == inventory.end() ? 0.0 : it->second) + 1);
         };
 
         if (has_dialog(dlg_id)) {
@@ -1031,6 +1052,41 @@ std::string Engine::variable_json(std::string_view name) const {
     auto it = impl_->variables.find(std::string(name));
     if (it == impl_->variables.end()) return "null";
     return it->second.to_json();
+}
+
+std::vector<std::pair<std::string, std::string>> Engine::variables() const {
+    std::vector<std::pair<std::string, std::string>> out;
+    if (!impl_) return out;
+    out.reserve(impl_->variables.size());
+    for (const auto& [name, v] : impl_->variables) out.emplace_back(name, v.to_json());
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+void Engine::set_variable(std::string_view name, std::string_view text) {
+    if (!impl_) return;
+    impl_->set_variable(name, DialogValue::from_var_text(text));
+}
+
+bool Engine::set_inventory_count(std::string_view id_or_name, double count) {
+    if (!impl_) return false;
+    const Item* item = impl_->game.find_item(id_or_name);
+    if (!item) return false;
+    impl_->set_item_count(item->id, count);
+    return true;
+}
+
+std::uint64_t Engine::state_version() const noexcept {
+    return impl_ ? impl_->state_version : 0;
+}
+
+std::vector<ParseError> Engine::validate(std::string_view bitsy_text) {
+    try {
+        (void)citsy::parse(bitsy_text);
+    } catch (const ParseError& e) {
+        return {e};
+    }
+    return {};
 }
 
 std::string Engine::take_dialog_text() {

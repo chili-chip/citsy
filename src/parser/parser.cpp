@@ -65,7 +65,7 @@ std::pair<int, int> parse_xy(std::string_view s, int line) {
 }
 
 // Parse one 8×8 pixel frame from exactly 8 lines of 8 binary chars.
-// @p lines must point to ≥8 elements; returns number of lines consumed (8).
+// @p lines must point to ≥8 elements; @p base_line is the file line of lines[0].
 TileFrame parse_tile_frame(const std::vector<std::string>& lines,
                            std::size_t start, int base_line) {
     TileFrame frame{};
@@ -464,7 +464,7 @@ private:
                 line.find_first_not_of("01") == std::string_view::npos) {
                 // Parse one frame.
                 tile.frames.push_back(
-                    parse_tile_frame(body, i, header_line));
+                    parse_tile_frame(body, i, header_line + 1));
                 i += kTileSize;
             } else {
                 // Sub-key.
@@ -474,14 +474,14 @@ private:
                 } else if (kw == "WAL") {
                     tile.is_wall = (trim(rest) == "true");
                 } else if (kw == "COL") {
-                    auto col_idx = parse_int(rest, header_line + static_cast<int>(i));
+                    auto col_idx = parse_int(rest, header_line + 1 + static_cast<int>(i));
                     tile.color_index = static_cast<std::uint8_t>(col_idx);
                 } else if (kw == "BGC") {
                     auto bg = trim(rest);
                     if (bg == "*") {
                         tile.bgc_transparent = true;
                     } else {
-                        tile.bgc = parse_int(bg, header_line + static_cast<int>(i));
+                        tile.bgc = parse_int(bg, header_line + 1 + static_cast<int>(i));
                     }
                 }
                 ++i;
@@ -513,7 +513,7 @@ private:
 
             if (line.size() == 8 &&
                 line.find_first_not_of("01") == std::string_view::npos) {
-                spr.frames.push_back(parse_tile_frame(body, i, header_line));
+                spr.frames.push_back(parse_tile_frame(body, i, header_line + 1));
                 i += kTileSize;
             } else {
                 auto [kw, rest] = split_once(line);
@@ -524,7 +524,7 @@ private:
                     auto [room_id, xy] = split_once(rest);
                     SpritePos p;
                     p.room_id = std::string(room_id);
-                    auto [x, y] = parse_xy(xy, header_line + static_cast<int>(i));
+                    auto [x, y] = parse_xy(xy, header_line + 1 + static_cast<int>(i));
                     p.x = x;
                     p.y = y;
                     spr.position = p;
@@ -532,18 +532,18 @@ private:
                     spr.dialog_id = std::string(rest);
                 } else if (kw == "COL") {
                     spr.color_index = static_cast<std::uint8_t>(
-                        parse_int(rest, header_line + static_cast<int>(i)));
+                        parse_int(rest, header_line + 1 + static_cast<int>(i)));
                 } else if (kw == "BGC") {
                     auto bg = trim(rest);
                     if (bg == "*") spr.bgc_transparent = true;
-                    else spr.bgc = parse_int(bg, header_line + static_cast<int>(i));
+                    else spr.bgc = parse_int(bg, header_line + 1 + static_cast<int>(i));
                 } else if (kw == "BLIP") {
                     spr.blip_id = std::string(rest);
                 } else if (kw == "ITM") {
                     auto [item_id, count] = split_once(rest);
                     int n = 1;
                     if (!count.empty()) {
-                        n = parse_int(count, header_line + static_cast<int>(i));
+                        n = parse_int(count, header_line + 1 + static_cast<int>(i));
                     }
                     spr.inventory[std::string(item_id)] = n;
                 }
@@ -576,7 +576,7 @@ private:
 
             if (line.size() == 8 &&
                 line.find_first_not_of("01") == std::string_view::npos) {
-                itm.frames.push_back(parse_tile_frame(body, i, header_line));
+                itm.frames.push_back(parse_tile_frame(body, i, header_line + 1));
                 i += kTileSize;
             } else {
                 auto [kw, rest] = split_once(line);
@@ -586,11 +586,11 @@ private:
                     itm.dialog_id = std::string(rest);
                 } else if (kw == "COL") {
                     itm.color_index = static_cast<std::uint8_t>(
-                        parse_int(rest, header_line + static_cast<int>(i)));
+                        parse_int(rest, header_line + 1 + static_cast<int>(i)));
                 } else if (kw == "BGC") {
                     auto bg = trim(rest);
                     if (bg == "*") itm.bgc_transparent = true;
-                    else itm.bgc = parse_int(bg, header_line + static_cast<int>(i));
+                    else itm.bgc = parse_int(bg, header_line + 1 + static_cast<int>(i));
                 } else if (kw == "BLIP") {
                     itm.blip_id = std::string(rest);
                 }
@@ -646,7 +646,7 @@ private:
             }
 
             if (is_tile_row) {
-                parse_room_tile_row(line, room, tile_rows_parsed, header_line + static_cast<int>(i));
+                parse_room_tile_row(line, room, tile_rows_parsed, header_line + 1 + static_cast<int>(i));
                 ++tile_rows_parsed;
                 ++i;
             } else {
@@ -674,7 +674,7 @@ private:
                 auto [item_id, xy] = split_once(rest);
                 RoomItem ri;
                 ri.item_id = std::string(item_id);
-                auto [x, y] = parse_xy(xy, header_line + static_cast<int>(i));
+                auto [x, y] = parse_xy(xy, header_line + 1 + static_cast<int>(i));
                 ri.x = x;
                 ri.y = y;
                 // Optional: DLG <dlg_id> after position
@@ -682,13 +682,13 @@ private:
                 room.items.push_back(std::move(ri));
             } else if (kw == "EXT") {
                 room.exits.push_back(
-                    parse_exit(rest, header_line + static_cast<int>(i)));
+                    parse_exit(rest, header_line + 1 + static_cast<int>(i)));
             } else if (kw == "END") {
                 // END <ending_id> <x>,<y>
                 auto [end_id, xy] = split_once(rest);
                 EndingRef er;
                 er.ending_id = std::string(end_id);
-                auto [x, y] = parse_xy(xy, header_line + static_cast<int>(i));
+                auto [x, y] = parse_xy(xy, header_line + 1 + static_cast<int>(i));
                 er.x = x;
                 er.y = y;
                 room.endings.push_back(std::move(er));

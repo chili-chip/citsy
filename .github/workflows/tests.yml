@@ -25,6 +25,38 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure
 
+  # The browser player (citsy.wasm) that the Chili creator ships, built with
+  # Emscripten and run in Node. The built files are kept as an artifact so the
+  # creator can take them from a tested run.
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: "4.0.10"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Build citsy.wasm
+        run: |
+          emcmake cmake -S . -B build-web -DCITSY_BUILD_WEB=ON -DCITSY_BUILD_TESTS=OFF \
+            -DCITSY_BUILD_EXAMPLES=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build build-web --target citsy_web --parallel
+
+      - name: Test citsy.wasm in Node
+        run: node --test tests/web/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: citsy-web
+          path: |
+            build-web/citsy.js
+            build-web/citsy.wasm
+
   # The parity goldens come from the Bitsy 8.15 reference engine; fail when a
   # case or game changed and its golden was not written again.
   parity-goldens:

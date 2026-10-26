@@ -64,7 +64,9 @@ tests/
 │   ├── test_simulation.cpp # Movement, collision, render, exits, dialog
 │   ├── test_phase3.cpp     # Animation, fonts, RTL, sound, transitions
 │   ├── test_textbox.cpp    # Textbox colours, effects, wrap, pagination
-│   └── test_parity.cpp     # Plays tests/parity/cases, compares with Bitsy 8.15
+│   ├── test_parity.cpp     # Plays tests/parity/cases, compares with Bitsy 8.15
+│   ├── test_state.cpp      # Live state API: variables, inventory, state_version, validate
+│   └── test_web_api.cpp    # The browser player's C API, built natively
 ├── parity/                 # Bitsy 8.15 reference engine, cases and goldens
 └── data/
     ├── minimal.bitsy       # Full game with all entity types
@@ -73,7 +75,8 @@ tests/
     ├── playable.bitsy      # Walls, NPC dialog, item, room exit
     ├── mossland.bitsy      # Real Bitsy 6.4 game
     ├── scripted.bitsy      # Variables, conditional dialog, inventory, ending
-    └── phase3.bitsy        # Bitsy 8.15 tune/blip/AVA/FX sample
+    ├── phase3.bitsy        # Bitsy 8.15 tune/blip/AVA/FX sample
+    └── state.bitsy         # Shop with a coin and two variables (live state API)
 ```
 
 | File | Tags | What it covers |
@@ -85,6 +88,8 @@ tests/
 | `test_phase3.cpp` | `[phase3]`, `[font]`, `[sound]`, `[transition]`, `[inventory]`, `[dialog]` | Animation, fonts, RTL, blips/tunes, `{item}`/`{property}`, titles, 8.15 extras |
 | `test_textbox.cpp` | `[textbox]`, `[font]`, `[dialog]`, `[engine]`, `[rbw]`, `[fx]`, `[wrap]`, `[page]`, `[sentence]`, `[typewriter]` | Black/white textbox, `{clr}`/`{rbw}`, combinable effects, whole-word wrap, typewriter reveal, multi-screen overflow, sentences kept on one screen, `{cycle}` |
 | `test_parity.cpp` | `[parity]` | Plays every `tests/parity/cases/*.case` and compares the trace (text, room, inventory, variables, and with `trace output` both sound channels and transitions frame by frame) with the golden written by Bitsy 8.15 (see [tests/parity/README.md](https://github.com/chili-chip/citsy/blob/main/tests/parity/README.md)) |
+| `test_state.cpp` | `[state]` | Live state API for tools: `variables()`, `set_variable`, `set_inventory_count`, `state_version()`, and `Engine::validate` line numbers (`tests/data/state.bitsy`) |
+| `test_web_api.cpp` | `[web]` | `backends/web/web_player.cpp` built natively against `tests/stubs/emscripten/emscripten.h`: `citsy_state_json`, the setters and `citsy_validate`. `tests/web/*.test.mjs` runs the same calls on the real `citsy.wasm` in CI |
 
 As of Phase 3, the suite covers parser, simulation, dialog scripting, fonts, sound, and transitions.
 
