@@ -192,4 +192,4 @@ Tools such as the creator's Play panel watch and change a running game:
 | `state_version()`: goes up when a variable or the inventory changes | `citsy_state_version()` |
 | `Engine::validate(text)`: `ParseError`s with `line()` and `message()` | `citsy_validate(text)`: `{"ok":true}` or `{"ok":false,"errors":[{"line":N,"message":"..."}]}` |
 
-`citsy_state_json()` only rebuilds its string when `state_version()` moves, so calling it every frame is cheap. Build the browser player with `scripts/build-web.sh` (Emscripten); CI builds it in the `web` job, runs `node --test tests/web/` on it and keeps `citsy.js` and `citsy.wasm` as the `citsy-web` artifact.
+`citsy_state_json()` only rebuilds its string when `state_version()` moves, so calling it every frame is cheap. Build the browser player with `scripts/build-web.sh` (Emscripten); CI builds it in the `web` job, runs `node --test tests/web/*.test.mjs` on it and keeps `citsy.js` and `citsy.wasm` as the `citsy-web` artifact.

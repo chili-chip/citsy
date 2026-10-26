@@ -1,5 +1,5 @@
 // Runs the built citsy.wasm in Node, the way the creator's worker calls it.
-// Usage: node --test tests/web/  (after scripts/build-web.sh or the CI build;
+// Usage: node --test tests/web/*.test.mjs  (after scripts/build-web.sh or the CI build;
 // CITSY_WEB_DIR points at the folder holding citsy.js and citsy.wasm).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
