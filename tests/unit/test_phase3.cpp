@@ -533,6 +533,84 @@ SQR P4 P8
     CHECK(heard);
 }
 
+namespace {
+
+// The first frequency the host hears within `frames` updates, or 0.
+int heard_frequency(citsy::Engine& e, citsy::MockHost& h, int frames = 20) {
+    for (int i = 0; i < frames; ++i) {
+        e.update(h);
+        const auto& snap = h.snapshots.back();
+        if (snap.sound1.active && snap.sound1.frequency_hz > 0) return snap.sound1.frequency_hz;
+        if (snap.sound2.active && snap.sound2.frequency_hz > 0) return snap.sound2.frequency_hz;
+    }
+    return 0;
+}
+
+} // namespace
+
+// Upstream Bitsy (engine/bitsy.js, startEndingDialog) saves the tune that was
+// playing when the ending started and, if the ending is locked, plays that tune
+// again. citsy used to restart the room tune instead (#24).
+TEST_CASE("engine: locked ending resumes the tune that was playing, not the room tune",
+          "[engine][phase3][sound][ending]") {
+    const std::string extra =
+        "TUNE 1\n"
+        "END 0 4,5\n"
+        "\n"
+        "SPR n\n"
+        "00111100\n01000010\n10100101\n10000001\n10100101\n10011001\n01000010\n00111100\n"
+        "NAME npc\n"
+        "POS 0 5,4\n"
+        "DLG DLG_N\n"
+        "\n"
+        "DLG DLG_N\n"
+        "{tune \"2\"}hello\n"
+        "\n"
+        "END 0\n"
+        "\"\"\"\n"
+        "{property locked true}Not yet.\n"
+        "\"\"\"\n"
+        "NAME gate\n"
+        "\n"
+        "TUNE 1\n"
+        "C,C,C,C,C,C,C,C,C,C,C,C,C,C,C,C\n"
+        "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n"
+        "TMP FST\n"
+        "SQR P4 P8\n"
+        "\n"
+        "TUNE 2\n"
+        "A,A,A,A,A,A,A,A,A,A,A,A,A,A,A,A\n"
+        "0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0\n"
+        "TMP FST\n"
+        "SQR P4 P8\n";
+    citsy::Engine engine(game_src(extra));
+    citsy::MockHost host;
+    host.dt_ms = 50;
+    engine.start(host);
+    REQUIRE_FALSE(engine.dialog_active());
+    const int room_tune = heard_frequency(engine, host);
+    REQUIRE(room_tune > 0);
+
+    // The NPC's dialog switches to tune 2.
+    tap(engine, host, citsy::Button::Right);
+    REQUIRE(engine.dialog_active());
+    press_ok(engine, host);
+    REQUIRE_FALSE(engine.dialog_active());
+    const int dialog_tune = heard_frequency(engine, host);
+    REQUIRE(dialog_tune > 0);
+    REQUIRE(dialog_tune != room_tune);
+
+    // Step on the locked ending, read it, close it.
+    tap(engine, host, citsy::Button::Down);
+    REQUIRE(engine.dialog_active());
+    CHECK(engine.dialog_line() == "Not yet.");
+    press_ok(engine, host);
+    REQUIRE_FALSE(engine.dialog_active());
+    CHECK(engine.is_running());
+
+    CHECK(heard_frequency(engine, host) == dialog_tune);
+}
+
 TEST_CASE("engine: {item} by name and locked exit", "[engine][phase3][inventory]") {
     std::string extra = "ITM 0 3,4\n";
     extra += "EXT 5,4 1 3,3 DLG DLG_L\n\n";
